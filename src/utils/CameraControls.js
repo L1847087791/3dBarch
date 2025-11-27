@@ -118,6 +118,10 @@ class CameraControls {
     this.camera.position.z = this.target.z + this.radius * Math.sin(this.phi) * Math.cos(this.theta);
 
     this.camera.lookAt(this.target.x, this.target.y, this.target.z);
+
+    //此处注释展示相机位置，可用于调节相机初始位置
+    // console.log(this.camera.position)
+    // console.log(this.target)
   }
 
   /**

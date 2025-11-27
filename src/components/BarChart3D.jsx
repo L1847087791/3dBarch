@@ -9,7 +9,7 @@ import CameraControls from '../utils/CameraControls';
  */
 function generateBarPositions() {
   const positions = [];
-  const spacing = 5; // 柱状图之间的间距
+  const spacing = 60; // 柱状图之间的间距
 
   // 第一堆：30个 (6x5)
   const group1Rows = 5;
@@ -80,7 +80,7 @@ const BarChart3D = () => {
     // 创建柱状图管理器
     barManagerRef.current = new BarCollectionManager(scene);
     const positions = generateBarPositions();
-    barManagerRef.current.createBars(positions, 2, 40);
+    barManagerRef.current.createBars(positions, 8, 20);
 
     console.log('已创建 80 个柱状图');
 

@@ -51,9 +51,9 @@ class BarManager {
       this.barWidth * 0.9
     );
     const innerMaterial = new THREE.MeshPhongMaterial({
-      color: 0xffffff,
-      emissive: 0xffffff,
-      emissiveIntensity: 0.3,
+      color: '#FFFFFF',
+      emissive: '#FFFFFF',
+      emissiveIntensity: 0.8,
       shininess: 100
     });
     this.innerBar = new THREE.Mesh(innerGeometry, innerMaterial);
