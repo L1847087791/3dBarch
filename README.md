@@ -73,7 +73,7 @@
 | **Three.js** | 0.160.0 | 3D 渲染引擎 |
 | **Node.js** | v22.14.0 | 运行环境 |
 | **Web Workers** | - | 多线程数据处理 |
-| **create-react-app** | 5.0.1 | 项目脚手架 |
+| **Vite** | 7.2.4 | 项目脚手架及构建工具 |
 
 ---
 
@@ -84,11 +84,16 @@
 npm run dev
 ```
 
-访问：http://localhost:3000
+访问：http://localhost:5173（Vite 默认端口）
 
 ### 生产构建
 ```bash
 npm run build
+```
+
+### 预览生产构建
+```bash
+npm run preview
 ```
 
 ---
@@ -269,8 +274,9 @@ camera.position.z = radius * sin(phi) * cos(theta)
 ## 🔍 注意事项
 
 1. **开发环境**：
-   - 确保 Node.js 版本为 v20.14.0
-   - 使用 npm 而非 yarn（避免依赖冲突）
+   - 确保 Node.js 版本为 v22.14.0
+   - 使用 npm 安装依赖
+   - 项目使用 Vite 作为构建工具，支持快速热更新
 
 2. **性能监控**：
    - 打开浏览器开发者工具 → Performance
@@ -283,6 +289,10 @@ camera.position.z = radius * sin(phi) * cos(theta)
 4. **资源清理**：
    - 组件卸载时会自动清理资源
    - 切换页面时 Worker 会自动停止
+
+5. **Vite 配置**：
+   - 使用 classic JSX Runtime 以兼容 React 16
+   - 配置文件位于 vite.config.js
 
 ---
 
