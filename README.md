@@ -15,6 +15,10 @@
   - 外壳：透明白色材质（opacity: 0.2）
   - 内部：白色发光材质，高度根据数据动态变化
 - ✅ **场景配色**：淡灰色背景 (#d3d3d3)
+- ✅ **堆分组标识**：
+  - 底部边框：白色矩形边框，清晰区分各堆范围
+  - 文字标签：使用 CSS2DRenderer 实现 2D 标签（数据集 A/B/C）
+  - 堆间距优化：增加堆之间的距离，使三个数据集更明显分离
 
 ### 2. **数据流模拟**
 - ✅ **Web Worker 独立线程**：避免阻塞主线程
@@ -50,9 +54,10 @@
 │   ├── components/
 │   │   └── BarChart3D.jsx          # 主组件（整合所有功能）
 │   ├── utils/
-│   │   ├── ThreeScene.js           # 场景管理类（场景、相机、渲染器、灯光）
+│   │   ├── ThreeScene.js           # 场景管理类（场景、相机、渲染器、灯光、CSS2DRenderer）
 │   │   ├── BarManager.js           # 柱状图管理类（创建、更新、销毁）
-│   │   └── CameraControls.js       # 相机控制类（旋转、缩放）
+│   │   ├── CameraControls.js       # 相机控制类（旋转、缩放）
+│   │   └── GroupIndicatorManager.js # 堆指示器管理类（边框、标签）
 │   ├── workers/
 │   │   └── dataGenerator.worker.js # 数据生成器（生成器 + sleep）
 │   ├── App.js                      # 根组件
@@ -70,7 +75,7 @@
 | 技术 | 版本 | 用途 |
 |------|------|------|
 | **React** | 16.14.0 | UI 框架（函数组件 + Hooks） |
-| **Three.js** | 0.160.0 | 3D 渲染引擎 |
+| **Three.js** | 0.160.0 | 3D 渲染引擎（包含 CSS2DRenderer） |
 | **Node.js** | v22.14.0 | 运行环境 |
 | **Web Workers** | - | 多线程数据处理 |
 | **Vite** | 7.2.4 | 项目脚手架及构建工具 |
@@ -149,6 +154,22 @@ workerRef.current.addEventListener('message', (event) => {
 camera.position.x = radius * sin(phi) * sin(theta)
 camera.position.y = radius * cos(phi)
 camera.position.z = radius * sin(phi) * cos(theta)
+```
+
+### 4. 堆指示器系统
+```javascript
+// 创建底部边框（透明平面 + 白色边框）
+const planeGeometry = new THREE.PlaneGeometry(width, depth);
+const edgesGeometry = new THREE.EdgesGeometry(planeGeometry);
+
+// 创建 CSS2D 标签
+const labelDiv = document.createElement('div');
+labelDiv.className = 'group-label';
+const label = new CSS2DObject(labelDiv);
+
+// 在渲染循环中同时渲染 WebGL 和 CSS2D
+renderer.render(scene, camera);
+labelRenderer.render(scene, camera);
 ```
 
 ---
@@ -307,6 +328,23 @@ camera.position.z = radius * sin(phi) * cos(theta)
 
 ## 📝 更新日志
 
+### v1.1.0 (2025-11-28)
+- ✅ 新增堆分组标识功能
+  - 为每个堆添加白色矩形边框，清晰区分数据集范围
+  - 添加文字标签（数据集 A/B/C），使用 CSS2DRenderer 实现
+  - 优化堆间距，将堆之间的距离从原来的 20-40 单位增加到 150 单位
+- ✅ 新增 GroupIndicatorManager 工具类
+  - 负责管理堆的边框和标签
+  - 支持批量创建和销毁
+  - 保持代码模块化和可维护性
+- ✅ 扩展 ThreeScene 类
+  - 集成 CSS2DRenderer 支持 2D 标签渲染
+  - 优化渲染循环，同时渲染 WebGL 和 CSS2D
+  - 完善资源清理机制
+- ✅ 优化样式系统
+  - 添加标签 CSS 样式（半透明背景、白色边框、阴影效果）
+  - 支持标签悬停效果
+
 ### v1.0.0 (2025-11-26)
 - ✅ 完成基础 3D 场景搭建
 - ✅ 实现 80 个柱状图渲染
@@ -328,4 +366,4 @@ camera.position.z = radius * sin(phi) * cos(theta)
 ---
 
 *项目创建时间：2025-11-26*
-*最后更新时间：2025-11-26*
+*最后更新时间：2025-11-28*

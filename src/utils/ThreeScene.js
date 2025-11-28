@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
 
 /**
  * Three.js 场景管理类
@@ -10,6 +11,7 @@ class ThreeScene {
     this.scene = null;
     this.camera = null;
     this.renderer = null;
+    this.labelRenderer = null; // CSS2D 渲染器
     this.lights = [];
 
     this.init();
@@ -45,6 +47,15 @@ class ThreeScene {
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(window.devicePixelRatio);
     this.container.appendChild(this.renderer.domElement);
+
+    // 创建 CSS2D 渲染器（用于渲染标签）
+    this.labelRenderer = new CSS2DRenderer();
+    this.labelRenderer.setSize(width, height);
+    this.labelRenderer.domElement.style.position = 'absolute';
+    this.labelRenderer.domElement.style.top = '0';
+    this.labelRenderer.domElement.style.left = '0';
+    this.labelRenderer.domElement.style.pointerEvents = 'none'; // 不阻挡鼠标事件
+    this.container.appendChild(this.labelRenderer.domElement);
 
     // 添加灯光
     this.setupLights();
@@ -86,6 +97,11 @@ class ThreeScene {
     this.camera.updateProjectionMatrix();
 
     this.renderer.setSize(width, height);
+
+    // 更新 CSS2D 渲染器大小
+    if (this.labelRenderer) {
+      this.labelRenderer.setSize(width, height);
+    }
   }
 
   /**
@@ -93,6 +109,11 @@ class ThreeScene {
    */
   render() {
     this.renderer.render(this.scene, this.camera);
+
+    // 渲染标签
+    if (this.labelRenderer) {
+      this.labelRenderer.render(this.scene, this.camera);
+    }
   }
 
   /**
@@ -117,6 +138,13 @@ class ThreeScene {
   }
 
   /**
+   * 获取 CSS2D 渲染器对象
+   */
+  getLabelRenderer() {
+    return this.labelRenderer;
+  }
+
+  /**
    * 清理资源
    */
   dispose() {
@@ -126,6 +154,13 @@ class ThreeScene {
       this.renderer.dispose();
       if (this.container && this.renderer.domElement) {
         this.container.removeChild(this.renderer.domElement);
+      }
+    }
+
+    // 清理 CSS2D 渲染器
+    if (this.labelRenderer && this.labelRenderer.domElement) {
+      if (this.container && this.labelRenderer.domElement.parentNode === this.container) {
+        this.container.removeChild(this.labelRenderer.domElement);
       }
     }
 

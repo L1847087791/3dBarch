@@ -2,53 +2,58 @@ import React, { useEffect, useRef } from 'react';
 import ThreeScene from '../utils/ThreeScene';
 import { BarCollectionManager } from '../utils/BarManager';
 import CameraControls from '../utils/CameraControls';
+import GroupIndicatorManager from '../utils/GroupIndicatorManager';
 
 /**
  * 生成柱状图位置
  * 3堆柱状图：30 + 30 + 20，矩形排列
+ * 采用三角形分布，充分利用X-Z平面空间
  */
 function generateBarPositions() {
   const positions = [];
   const spacing = 60; // 柱状图之间的间距
 
-  // 第一堆：30个 (6x5)
+  // 第一堆：30个 (6x5) - 左前方
   const group1Rows = 5;
   const group1Cols = 6;
-  const group1StartX = -30;
+  const group1StartX = -300; // 左侧
+  const group1StartZ = -100; // 前方
   for (let row = 0; row < group1Rows; row++) {
     for (let col = 0; col < group1Cols; col++) {
       positions.push({
         x: group1StartX + col * spacing,
         y: 0,
-        z: row * spacing
+        z: group1StartZ + row * spacing
       });
     }
   }
 
-  // 第二堆：30个 (6x5)
+  // 第二堆：30个 (6x5) - 右前方
   const group2Rows = 5;
   const group2Cols = 6;
-  const group2StartX = -10;
+  const group2StartX = 100; // 右侧
+  const group2StartZ = -100; // 前方
   for (let row = 0; row < group2Rows; row++) {
     for (let col = 0; col < group2Cols; col++) {
       positions.push({
         x: group2StartX + col * spacing,
         y: 0,
-        z: row * spacing
+        z: group2StartZ + row * spacing
       });
     }
   }
 
-  // 第三堆：20个 (5x4)
+  // 第三堆：20个 (5x4) - 后中方
   const group3Rows = 4;
   const group3Cols = 5;
-  const group3StartX = 10;
+  const group3StartX = -50; // 中间偏左
+  const group3StartZ = 200; // 后方
   for (let row = 0; row < group3Rows; row++) {
     for (let col = 0; col < group3Cols; col++) {
       positions.push({
         x: group3StartX + col * spacing,
         y: 0,
-        z: row * spacing
+        z: group3StartZ + row * spacing
       });
     }
   }
@@ -56,11 +61,53 @@ function generateBarPositions() {
   return positions;
 }
 
+/**
+ * 生成堆指示器信息
+ * 根据柱状图位置计算每个堆的边界和标签信息
+ */
+function generateGroupIndicatorInfo() {
+  const spacing = 60;
+
+  return [
+    {
+      // 第一堆：6列x5行 - 左前方
+      // X: -300 到 -300+5*60 = 0
+      // Z: -100 到 -100+4*60 = 140
+      centerX: -300 + (5 * spacing) / 2, // -150
+      centerZ: -100 + (4 * spacing) / 2, // 20
+      width: 6 * spacing,  // 360
+      depth: 5 * spacing,  // 300
+      label: '数据集 A'
+    },
+    {
+      // 第二堆：6列x5行 - 右前方
+      // X: 100 到 100+5*60 = 400
+      // Z: -100 到 -100+4*60 = 140
+      centerX: 100 + (5 * spacing) / 2, // 250
+      centerZ: -100 + (4 * spacing) / 2, // 20
+      width: 6 * spacing,  // 360
+      depth: 5 * spacing,  // 300
+      label: '数据集 B'
+    },
+    {
+      // 第三堆：5列x4行 - 后中方
+      // X: -50 到 -50+4*60 = 190
+      // Z: 200 到 200+3*60 = 380
+      centerX: -50 + (4 * spacing) / 2, // 70
+      centerZ: 200 + (3 * spacing) / 2, // 290
+      width: 5 * spacing,  // 300
+      depth: 4 * spacing,  // 240
+      label: '数据集 C'
+    }
+  ];
+}
+
 const BarChart3D = () => {
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
   const barManagerRef = useRef(null);
   const controlsRef = useRef(null);
+  const groupIndicatorRef = useRef(null); // 堆指示器管理器
   const workerRef = useRef(null);
   const animationFrameRef = useRef(null);
 
@@ -83,6 +130,13 @@ const BarChart3D = () => {
     barManagerRef.current.createBars(positions, 8, 20);
 
     console.log('已创建 80 个柱状图');
+
+    // 创建堆指示器（边框和标签）
+    groupIndicatorRef.current = new GroupIndicatorManager(scene);
+    const groupsInfo = generateGroupIndicatorInfo();
+    groupIndicatorRef.current.createAllIndicators(groupsInfo);
+
+    console.log('已创建堆指示器（边框和标签）');
 
     // 初始化所有柱状图高度为随机值（便于测试）
     const initialData = new Array(80).fill(0).map(() => Math.random() * 50 + 20);
@@ -147,6 +201,10 @@ const BarChart3D = () => {
 
       if (controlsRef.current) {
         controlsRef.current.dispose();
+      }
+
+      if (groupIndicatorRef.current) {
+        groupIndicatorRef.current.dispose();
       }
 
       if (barManagerRef.current) {
