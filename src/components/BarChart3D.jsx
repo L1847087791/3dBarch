@@ -11,12 +11,12 @@ import GroupIndicatorManager from '../utils/GroupIndicatorManager';
  */
 function generateBarPositions() {
   const positions = [];
-  const spacing = 60; // 柱状图之间的间距
+  const spacing = 20; // 柱状图之间的间距
 
   // 第一堆：30个 (6x5) - 左前方
   const group1Rows = 5;
   const group1Cols = 6;
-  const group1StartX = -300; // 左侧
+  const group1StartX = -100; // 左侧
   const group1StartZ = -100; // 前方
   for (let row = 0; row < group1Rows; row++) {
     for (let col = 0; col < group1Cols; col++) {
@@ -47,7 +47,7 @@ function generateBarPositions() {
   const group3Rows = 4;
   const group3Cols = 5;
   const group3StartX = -50; // 中间偏左
-  const group3StartZ = 200; // 后方
+  const group3StartZ = 100; // 后方
   for (let row = 0; row < group3Rows; row++) {
     for (let col = 0; col < group3Cols; col++) {
       positions.push({
@@ -66,37 +66,31 @@ function generateBarPositions() {
  * 根据柱状图位置计算每个堆的边界和标签信息
  */
 function generateGroupIndicatorInfo() {
-  const spacing = 60;
+  const spacing = 20;  //需要和柱状图间距保持一致
 
   return [
     {
       // 第一堆：6列x5行 - 左前方
-      // X: -300 到 -300+5*60 = 0
-      // Z: -100 到 -100+4*60 = 140
-      centerX: -300 + (5 * spacing) / 2, // -150
-      centerZ: -100 + (4 * spacing) / 2, // 20
-      width: 6 * spacing,  // 360
-      depth: 5 * spacing,  // 300
+      centerX: -100 + (5 * spacing) / 2, // x轴中心位置
+      centerZ: -100 + (4 * spacing) / 2, //z轴中心位置
+      width: 6 * spacing,  // x轴长度
+      depth: 5 * spacing,  // z轴长度
       label: '数据集 A'
     },
     {
       // 第二堆：6列x5行 - 右前方
-      // X: 100 到 100+5*60 = 400
-      // Z: -100 到 -100+4*60 = 140
-      centerX: 100 + (5 * spacing) / 2, // 250
-      centerZ: -100 + (4 * spacing) / 2, // 20
-      width: 6 * spacing,  // 360
-      depth: 5 * spacing,  // 300
+      centerX: 100 + (5 * spacing) / 2, //x轴中心位置
+      centerZ: -100 + (4 * spacing) / 2, // z轴中心位置
+      width: 6 * spacing,  // x轴长度
+      depth: 5 * spacing,  // z轴长度
       label: '数据集 B'
     },
     {
       // 第三堆：5列x4行 - 后中方
-      // X: -50 到 -50+4*60 = 190
-      // Z: 200 到 200+3*60 = 380
-      centerX: -50 + (4 * spacing) / 2, // 70
-      centerZ: 200 + (3 * spacing) / 2, // 290
-      width: 5 * spacing,  // 300
-      depth: 4 * spacing,  // 240
+      centerX: -50 + (4 * spacing) / 2, // x轴中心位置
+      centerZ: 100 + (3 * spacing) / 2, // z轴中心位置
+      width: 5 * spacing,  // x轴长度
+      depth: 4 * spacing,  //z轴长度
       label: '数据集 C'
     }
   ];
