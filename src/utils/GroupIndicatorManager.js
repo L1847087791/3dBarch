@@ -84,16 +84,6 @@ class GroupIndicatorManager {
     const labelDiv = document.createElement('div');
     labelDiv.className = 'group-label';
     labelDiv.textContent = text;
-    labelDiv.style.color = 'white';
-    labelDiv.style.fontSize = '18px';
-    labelDiv.style.fontFamily = 'Arial, sans-serif';
-    labelDiv.style.fontWeight = 'bold';
-    labelDiv.style.padding = '8px 16px';
-    labelDiv.style.background = 'rgba(0, 0, 0, 0.5)';
-    labelDiv.style.borderRadius = '4px';
-    labelDiv.style.border = '1px solid white';
-    labelDiv.style.pointerEvents = 'none'; // 不阻挡鼠标事件
-    labelDiv.style.userSelect = 'none'; // 不可选中
 
     // 创建 CSS2DObject
     const label = new CSS2DObject(labelDiv);

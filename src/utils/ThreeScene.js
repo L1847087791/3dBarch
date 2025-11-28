@@ -25,6 +25,10 @@ class ThreeScene {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0xd3d3d3); // 淡灰色背景
 
+    //创建坐标辅助器，仅用于区分笛卡尔坐标 ：X 轴为红色，Y 轴为绿色，Z 轴为蓝色
+    const axesHelper = new THREE.AxesHelper(200)
+    this.scene.add(axesHelper);
+
     // 创建透视相机
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
@@ -36,7 +40,7 @@ class ThreeScene {
     );
 
     // 设置相机初始位置，确保能看到所有柱状图
-    this.camera.position.set(-70, 70, -100);
+    this.camera.position.set(-60, 240, -290);
     this.camera.lookAt(0, 0, 0);
 
     // 创建渲染器

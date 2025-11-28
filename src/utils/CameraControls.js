@@ -103,7 +103,7 @@ class CameraControls {
     }
 
     // 限制缩放范围
-    this.radius = Math.max(this.minRadius, Math.min(this.maxRadius, this.radius));
+    // this.radius = Math.max(this.minRadius, Math.min(this.maxRadius, this.radius));
 
     this.updateCameraPosition();
   }

@@ -24,25 +24,27 @@ body {
 
 /* 堆标签样式 */
 .group-label {
-  color: white !important;
-  font-size: 18px !important;
-  font-family: 'Arial', sans-serif !important;
-  font-weight: bold !important;
-  padding: 8px 16px !important;
-  background: rgba(0, 0, 0, 0.6) !important;
-  border-radius: 6px !important;
-  border: 1px solid rgba(255, 255, 255, 0.8) !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-  backdrop-filter: blur(4px) !important;
-  pointer-events: none !important;
-  user-select: none !important;
-  white-space: nowrap !important;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8) !important;
-  transition: opacity 0.3s ease !important;
+  color: white ;
+  font-size: 14px ;
+  font-family: 'Arial', sans-serif ;
+  font-weight: bold ;
+  padding: 3px 4px ;
+  background: rgba(0, 0, 0, 0.6) ;
+  border-radius: 6px ;
+  border: 1px solid rgba(255, 255, 255, 0.8) ;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) ;
+  backdrop-filter: blur(4px) ;
+  pointer-events: none ;
+  user-select: none ;
+  white-space: nowrap ;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8) ;
+  transition: opacity 0.3s ease ;
+  pointer-events: none;  /*不阻挡鼠标事件*/
+  user-select: none; /*不可选中*/
 }
 
 /* 鼠标悬停时的效果 */
 .group-label:hover {
-  background: rgba(0, 0, 0, 0.8) !important;
-  border-color: white !important;
+  background: rgba(0, 0, 0, 0.8) ;
+  border-color: white ;
 }
