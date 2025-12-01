@@ -124,6 +124,7 @@ const BarChart3D = () => {
     barManagerRef.current.createBars(positions, 8, 20);
 
     console.log('已创建 80 个柱状图');
+    // console.log(barManagerRef.current.getBars())
 
     // 创建堆指示器（边框和标签）
     groupIndicatorRef.current = new GroupIndicatorManager(scene);

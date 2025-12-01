@@ -29,6 +29,10 @@ class ThreeScene {
     const axesHelper = new THREE.AxesHelper(200)
     this.scene.add(axesHelper);
 
+    //创建网格辅助器，调试场景图位置
+    const grideHelper = new THREE.GridHelper(500,50)
+    this.scene.add(grideHelper)
+
     // 创建透视相机
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
@@ -171,6 +175,12 @@ class ThreeScene {
     // 清理场景中的所有对象
     if (this.scene) {
       this.scene.traverse((object) => {
+        if(object.axesHelper){
+          object.axesHelper.dispose()
+        }
+        if(object.grideHelper){
+          object.grideHelper.dispose()
+        }
         if (object.geometry) {
           object.geometry.dispose();
         }
