@@ -2,18 +2,20 @@ import * as THREE from 'three';
 
 /**
  * 柱状图管理类
- * 负责创建和管理单个柱状图（外壳 + 内部实体）
+ * 负责创建和管理单个柱状图（外壳 + 多层内部实体）
  */
 class BarManager {
-  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, maxHeight = 50) {
+  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, maxHeight = 50, layerCount = 20) {
     this.scene = scene;
     this.position = position;
     this.barWidth = barWidth;
     this.maxHeight = maxHeight;
+    this.layerCount = layerCount; // 分层数量
 
     this.outerShell = null; // 透明白色外壳
-    this.innerBar = null;   // 白色内部实体
+    this.innerLayers = [];  // 多层内部实体数组（每个元素包含mesh和边框）
     this.currentHeight = 0;
+    this.layerGap = 0.2;    // 层与层之间的间隔（加大间距使其更清晰可见）
 
     this.createBar();
   }
@@ -44,46 +46,143 @@ class BarManager {
     );
     this.scene.add(this.outerShell);
 
-    // 创建内部实体（白色，使用最大高度的几何体，通过缩放控制实际高度）
-    const innerGeometry = new THREE.BoxGeometry(
-      this.barWidth * 0.9, // 稍微小一点，避免与外壳重叠
-      this.maxHeight, // 使用最大高度，通过缩放控制
-      this.barWidth * 0.9
-    );
-    const innerMaterial = new THREE.MeshPhongMaterial({
-      color: '#FFFFFF',
-      emissive: '#FFFFFF',
-      emissiveIntensity: 0.8,
-      shininess: 100
-    });
-    this.innerBar = new THREE.Mesh(innerGeometry, innerMaterial);
-    this.innerBar.scale.y = 0.002; // 初始缩放为很小
-    this.innerBar.position.set(
-      this.position.x,
-      this.position.y + (this.maxHeight * 0.002) / 2,
-      this.position.z
-    );
-    this.scene.add(this.innerBar);
+    // 创建多层内部实体
+    this.createLayers();
   }
 
   /**
-   * 更新柱状图高度（优化版 - 使用缩放而非重建几何体）
-   * @param {number} value - 数据值（0-100）
+   * 创建多层内部实体
+   * 每层都是独立的Mesh，便于后续交互拾取
+   * 空间分配：底部间隔 + 层1 + 间隔 + 层2 + ... + 层n + 顶部间隔 = 外层高度
    */
-  updateHeight(value) {
-    // 将数据值映射到高度
-    const normalizedValue = Math.max(0, Math.min(100, value)); // 限制在0-100
-    const targetHeight = (normalizedValue / 100) * this.maxHeight;
+  createLayers() {
+    // 清空现有层
+    this.innerLayers.forEach(layerObj => {
+      layerObj.mesh.geometry.dispose();
+      layerObj.mesh.material.dispose();
+      this.scene.remove(layerObj.mesh);
+      // 清理边框
+      if (layerObj.edges) {
+        layerObj.edges.geometry.dispose();
+        layerObj.edges.material.dispose();
+        this.scene.remove(layerObj.edges);
+      }
+    });
+    this.innerLayers = [];
 
-    // 平滑过渡
-    this.currentHeight = targetHeight;
+    // 计算每层的基础高度（考虑层间间隔）
+    // 总共需要 (layerCount + 1) 个间隔：底部1个 + 层间(layerCount-1)个 + 顶部1个
+    const totalGap = this.layerGap * (this.layerCount + 1);
+    const availableHeight = this.maxHeight - totalGap;
+    const layerBaseHeight = availableHeight / this.layerCount;
 
-    // 使用缩放而非重建几何体（性能优化）
-    const scaleY = Math.max(0.002, targetHeight / this.maxHeight); // 最小缩放值避免完全消失
-    this.innerBar.scale.y = scaleY;
+    // 创建每一层
+    for (let i = 0; i < this.layerCount; i++) {
+      // 每层使用基础高度的几何体
+      const layerGeometry = new THREE.BoxGeometry(
+        this.barWidth * 0.9, // 稍微小一点，避免与外壳重叠
+        layerBaseHeight,
+        this.barWidth * 0.9
+      );
 
-    // 更新内部实体的位置（从底部开始增长）
-    this.innerBar.position.y = this.position.y + (this.maxHeight * scaleY) / 2;
+      // 内层材质（调浅颜色，降低发光强度）
+      const layerMaterial = new THREE.MeshPhongMaterial({
+        color: 0xcccccc,        // 浅灰色
+        emissive: 0xaaaaaa,     // 浅灰色发光
+        emissiveIntensity: 0.3, // 降低发光强度
+        shininess: 50
+      });
+
+      const layerMesh = new THREE.Mesh(layerGeometry, layerMaterial);
+
+      // 创建边框（使用EdgesGeometry + LineSegments，高性能方式）
+      const edgesGeometry = new THREE.EdgesGeometry(layerGeometry);
+      const edgesMaterial = new THREE.LineBasicMaterial({
+        color: 0xffffff,  // 亮白色边框
+        linewidth: 1
+      });
+      const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+
+      // 初始化缩放为很小
+      layerMesh.scale.y = 0.002;
+      edges.scale.y = 0.002;
+
+      // 设置层的初始位置（从底部间隔开始）
+      const yOffset = this.position.y + this.layerGap + (layerBaseHeight * 0.002) / 2 + i * (layerBaseHeight * 0.002 + this.layerGap);
+      layerMesh.position.set(
+        this.position.x,
+        yOffset,
+        this.position.z
+      );
+      edges.position.copy(layerMesh.position);
+
+      // 存储层的索引和基础高度信息（用于后续更新）
+      layerMesh.userData = {
+        layerIndex: i,
+        baseHeight: layerBaseHeight
+      };
+
+      this.scene.add(layerMesh);
+      this.scene.add(edges);
+
+      // 存储mesh和边框的引用
+      this.innerLayers.push({
+        mesh: layerMesh,
+        edges: edges
+      });
+    }
+  }
+
+  /**
+   * 更新柱状图高度（支持多层数据）
+   * @param {Array} layerValues - 每层的数据值数组（0-100）
+   */
+  updateHeight(layerValues) {
+    // 如果传入的是单个值（向后兼容），转换为数组
+    if (typeof layerValues === 'number') {
+      layerValues = new Array(this.layerCount).fill(layerValues / this.layerCount);
+    }
+
+    // 确保数据长度匹配
+    if (layerValues.length !== this.layerCount) {
+      console.warn(`数据长度(${layerValues.length})与层数(${this.layerCount})不匹配`);
+      return;
+    }
+
+    // 计算总高度和每层高度
+    // 总共需要 (layerCount + 1) 个间隔：底部1个 + 层间(layerCount-1)个 + 顶部1个
+    const totalGap = this.layerGap * (this.layerCount + 1);
+    const availableHeight = this.maxHeight - totalGap;
+    const layerBaseHeight = availableHeight / this.layerCount;
+
+    // 计算每层的目标高度
+    const layerHeights = layerValues.map(value => {
+      const normalizedValue = Math.max(0, Math.min(100, value));
+      return (normalizedValue / 100) * layerBaseHeight;
+    });
+
+    // 更新每一层（从底部间隔开始）
+    let currentY = this.position.y + this.layerGap;
+    for (let i = 0; i < this.innerLayers.length; i++) {
+      const layerObj = this.innerLayers[i];
+      const targetHeight = layerHeights[i];
+
+      // 使用缩放而非重建几何体（性能优化）
+      const scaleY = Math.max(0.002, targetHeight / layerBaseHeight);
+      layerObj.mesh.scale.y = scaleY;
+      layerObj.edges.scale.y = scaleY;
+
+      // 更新层的位置（从底部开始堆叠）
+      const newY = currentY + (layerBaseHeight * scaleY) / 2;
+      layerObj.mesh.position.y = newY;
+      layerObj.edges.position.y = newY;
+
+      // 累加当前层的高度和间隔
+      currentY += layerBaseHeight * scaleY + this.layerGap;
+    }
+
+    // 更新总高度
+    this.currentHeight = currentY - this.position.y - this.layerGap;
   }
 
   /**
@@ -103,11 +202,18 @@ class BarManager {
       this.scene.remove(this.outerShell);
     }
 
-    if (this.innerBar) {
-      this.innerBar.geometry.dispose();
-      this.innerBar.material.dispose();
-      this.scene.remove(this.innerBar);
-    }
+    // 销毁所有内部层（包括mesh和边框）
+    this.innerLayers.forEach(layerObj => {
+      layerObj.mesh.geometry.dispose();
+      layerObj.mesh.material.dispose();
+      this.scene.remove(layerObj.mesh);
+      if (layerObj.edges) {
+        layerObj.edges.geometry.dispose();
+        layerObj.edges.material.dispose();
+        this.scene.remove(layerObj.edges);
+      }
+    });
+    this.innerLayers = [];
   }
 }
 
@@ -126,10 +232,13 @@ class BarCollectionManager {
    * @param {Array} positions - 位置数组 [{x, y, z}, ...]
    * @param {number} barWidth - 柱状图宽度
    * @param {number} maxHeight - 最大高度
+   * @param {Array} layerCounts - 每个柱状图的层数数组（可选）
    */
-  createBars(positions, barWidth = 2, maxHeight = 50) {
-    positions.forEach((pos) => {
-      const bar = new BarManager(this.scene, pos, barWidth, maxHeight);
+  createBars(positions, barWidth = 2, maxHeight = 50, layerCounts = []) {
+    positions.forEach((pos, index) => {
+      // 如果指定了层数数组，使用对应的层数，否则默认为20层
+      const layerCount = layerCounts[index] || 20;
+      const bar = new BarManager(this.scene, pos, barWidth, maxHeight, layerCount);
       this.bars.push(bar);
     });
   }
