@@ -5,12 +5,23 @@ import * as THREE from 'three';
  * 负责创建和管理单个柱状图（外壳 + 多层内部实体）
  */
 class BarManager {
-  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, maxHeight = 50, layerCount = 20) {
+  /**
+   * @param {THREE.Scene} scene - Three.js 场景
+   * @param {Object} position - 位置 {x, y, z}
+   * @param {number} barWidth - 柱状图宽度
+   * @param {number} maxHeight - 最大高度
+   * @param {number} layerCount - 分层数量
+   * @param {number} barIndex - 柱状图在集合中的索引（用于交互识别）
+   * @param {string} groupName - 所属堆的名称（如 '数据集 A'）
+   */
+  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, maxHeight = 50, layerCount = 20, barIndex = 0, groupName = '') {
     this.scene = scene;
     this.position = position;
     this.barWidth = barWidth;
     this.maxHeight = maxHeight;
     this.layerCount = layerCount; // 分层数量
+    this.barIndex = barIndex;     // 柱状图索引
+    this.groupName = groupName;   // 所属堆名称
 
     this.outerShell = null; // 透明白色外壳
     this.innerLayers = [];  // 多层内部实体数组（每个元素包含mesh和边框）
@@ -44,6 +55,13 @@ class BarManager {
       this.position.y + this.maxHeight / 2,
       this.position.z
     );
+    // 添加 userData 用于交互识别
+    this.outerShell.userData = {
+      type: 'outerShell',        // 标记为外壳
+      barIndex: this.barIndex,   // 所属柱状图索引
+      groupName: this.groupName, // 所属堆名称
+      raycastEnabled: true       // 是否可被射线拾取
+    };
     this.scene.add(this.outerShell);
 
     // 创建多层内部实体
@@ -116,9 +134,12 @@ class BarManager {
       );
       edges.position.copy(layerMesh.position);
 
-      // 存储层的索引和基础高度信息（用于后续更新）
+      // 存储层的索引和基础高度信息（用于后续更新和交互）
       layerMesh.userData = {
-        layerIndex: i,
+        type: 'innerLayer',        // 标记为内层
+        layerIndex: i,             // 层索引
+        barIndex: this.barIndex,   // 所属柱状图索引
+        groupName: this.groupName, // 所属堆名称
         baseHeight: layerBaseHeight
       };
 
@@ -233,12 +254,14 @@ class BarCollectionManager {
    * @param {number} barWidth - 柱状图宽度
    * @param {number} maxHeight - 最大高度
    * @param {Array} layerCounts - 每个柱状图的层数数组（可选）
+   * @param {Array} groupNames - 每个柱状图所属堆名称数组（可选）
    */
-  createBars(positions, barWidth = 2, maxHeight = 50, layerCounts = []) {
+  createBars(positions, barWidth = 2, maxHeight = 50, layerCounts = [], groupNames = []) {
     positions.forEach((pos, index) => {
       // 如果指定了层数数组，使用对应的层数，否则默认为20层
       const layerCount = layerCounts[index] || 20;
-      const bar = new BarManager(this.scene, pos, barWidth, maxHeight, layerCount);
+      const groupName = groupNames[index] || '';
+      const bar = new BarManager(this.scene, pos, barWidth, maxHeight, layerCount, index, groupName);
       this.bars.push(bar);
     });
   }

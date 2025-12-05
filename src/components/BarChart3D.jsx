@@ -3,6 +3,7 @@ import ThreeScene from '../utils/ThreeScene';
 import { BarCollectionManager } from '../utils/BarManager';
 import CameraControls from '../utils/CameraControls';
 import GroupIndicatorManager from '../utils/GroupIndicatorManager';
+import InteractionManager from '../utils/InteractionManager';
 
 /**
  * 生成柱状图位置
@@ -13,6 +14,7 @@ import GroupIndicatorManager from '../utils/GroupIndicatorManager';
 function generateBarPositions() {
   const positions = [];
   const layerCounts = []; // 存储每个柱状图的层数
+  const groupNames = [];  // 存储每个柱状图所属堆名称
   const spacing = 20; // 柱状图之间的间距
 
   // 第一堆：30个 (6x5) - 左前方 - 每个柱状图20层
@@ -29,6 +31,7 @@ function generateBarPositions() {
         z: group1StartZ + row * spacing
       });
       layerCounts.push(group1LayerCount);
+      groupNames.push('数据集 A');
     }
   }
 
@@ -46,6 +49,7 @@ function generateBarPositions() {
         z: group2StartZ + row * spacing
       });
       layerCounts.push(group2LayerCount);
+      groupNames.push('数据集 B');
     }
   }
 
@@ -63,10 +67,11 @@ function generateBarPositions() {
         z: group3StartZ + row * spacing
       });
       layerCounts.push(group3LayerCount);
+      groupNames.push('数据集 C');
     }
   }
 
-  return { positions, layerCounts };
+  return { positions, layerCounts, groupNames };
 }
 
 /**
@@ -110,6 +115,7 @@ const BarChart3D = () => {
   const barManagerRef = useRef(null);
   const controlsRef = useRef(null);
   const groupIndicatorRef = useRef(null); // 堆指示器管理器
+  const interactionRef = useRef(null);    // 交互管理器
   const workerRef = useRef(null);
   const animationFrameRef = useRef(null);
 
@@ -128,8 +134,8 @@ const BarChart3D = () => {
 
     // 创建柱状图管理器
     barManagerRef.current = new BarCollectionManager(scene);
-    const { positions, layerCounts } = generateBarPositions();
-    barManagerRef.current.createBars(positions, 8, 20, layerCounts);
+    const { positions, layerCounts, groupNames } = generateBarPositions();
+    barManagerRef.current.createBars(positions, 8, 20, layerCounts, groupNames);
 
     console.log('已创建 80 个柱状图，层数分配：A堆20层、B堆30层、C堆10层');
     // console.log(barManagerRef.current.getBars())
@@ -167,6 +173,15 @@ const BarChart3D = () => {
     );
 
     console.log('相机控制已设置');
+
+    // 设置交互管理器
+    interactionRef.current = new InteractionManager(
+      camera,
+      renderer.domElement,
+      barManagerRef.current
+    );
+
+    console.log('交互管理器已设置');
 
     // ========== 注释掉 Worker 启动和数据传输部分 ==========
     // // 启动 Worker
@@ -217,6 +232,10 @@ const BarChart3D = () => {
 
       if (controlsRef.current) {
         controlsRef.current.dispose();
+      }
+
+      if (interactionRef.current) {
+        interactionRef.current.dispose();
       }
 
       if (groupIndicatorRef.current) {
