@@ -20,14 +20,21 @@ class InteractionManager {
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
 
-    // 当前选中的柱状图索引（用于步骤二的内层拾取）
+    // 当前选中的柱状图索引（用于内层拾取）
     this.selectedBarIndex = null;
 
-    // 当前悬停的柱状图索引
+    // 当前悬停的柱状图索引（外层悬停）
     this.hoveredBarIndex = null;
+
+    // 当前悬停的内层索引
+    this.hoveredLayerIndex = null;
 
     // 悬停缩放比例
     this.hoverScale = 1.1;
+
+    // 内层闪烁动画相关
+    this.blinkInterval = null;
+    this.blinkState = false;
 
     // 绑定事件处理函数（保持 this 引用）
     this._onMouseClick = this._onMouseClick.bind(this);
@@ -65,6 +72,20 @@ class InteractionManager {
     // 更新射线
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
+    // 如果有选中的柱状图，优先检测内层悬停
+    if (this.selectedBarIndex !== null) {
+      this._handleInnerLayerHover();
+      return;
+    }
+
+    // 否则检测外层悬停
+    this._handleOuterShellHover();
+  }
+
+  /**
+   * 处理外层悬停检测
+   */
+  _handleOuterShellHover() {
     // 获取所有可拾取的外壳对象
     const outerShells = this._getPickableOuterShells();
 
@@ -95,6 +116,104 @@ class InteractionManager {
         this.domElement.style.cursor = 'default';
       }
     }
+  }
+
+  /**
+   * 处理内层悬停检测
+   */
+  _handleInnerLayerHover() {
+    const bar = this.barCollectionManager.getBars()[this.selectedBarIndex];
+    if (!bar) return;
+
+    // 获取该柱状图的所有内层 Mesh
+    const innerMeshes = bar.innerLayers.map(layerObj => layerObj.mesh);
+
+    // 进行射线检测
+    const intersects = this.raycaster.intersectObjects(innerMeshes);
+
+    if (intersects.length > 0) {
+      const intersected = intersects[0].object;
+      const layerIndex = intersected.userData.layerIndex;
+
+      // 如果悬停到新的内层
+      if (this.hoveredLayerIndex !== layerIndex) {
+        // 停止之前的闪烁
+        this._stopLayerBlink();
+
+        // 设置新的悬停内层
+        this.hoveredLayerIndex = layerIndex;
+
+        // 开始闪烁
+        this._startLayerBlink();
+
+        this.domElement.style.cursor = 'pointer';
+      }
+    } else {
+      // 鼠标移出所有内层
+      if (this.hoveredLayerIndex !== null) {
+        this._stopLayerBlink();
+        this.hoveredLayerIndex = null;
+        this.domElement.style.cursor = 'default';
+      }
+    }
+  }
+
+  /**
+   * 开始内层闪烁效果
+   */
+  _startLayerBlink() {
+    if (this.selectedBarIndex === null || this.hoveredLayerIndex === null) return;
+
+    const bar = this.barCollectionManager.getBars()[this.selectedBarIndex];
+    if (!bar) return;
+
+    const layerObj = bar.innerLayers[this.hoveredLayerIndex];
+    if (!layerObj) return;
+
+    // 保存原始颜色
+    layerObj.mesh.userData.originalEmissive = layerObj.mesh.material.emissive.getHex();
+    layerObj.mesh.userData.originalEmissiveIntensity = layerObj.mesh.material.emissiveIntensity;
+
+    // 开始闪烁动画
+    this.blinkState = false;
+    this.blinkInterval = setInterval(() => {
+      this.blinkState = !this.blinkState;
+      if (layerObj.mesh.material) {
+        if (this.blinkState) {
+          // 高亮状态
+          layerObj.mesh.material.emissive.setHex(0xffff00);
+          layerObj.mesh.material.emissiveIntensity = 0.8;
+        } else {
+          // 恢复状态
+          layerObj.mesh.material.emissive.setHex(layerObj.mesh.userData.originalEmissive);
+          layerObj.mesh.material.emissiveIntensity = layerObj.mesh.userData.originalEmissiveIntensity;
+        }
+      }
+    }, 200);
+  }
+
+  /**
+   * 停止内层闪烁效果
+   */
+  _stopLayerBlink() {
+    if (this.blinkInterval) {
+      clearInterval(this.blinkInterval);
+      this.blinkInterval = null;
+    }
+
+    // 恢复内层原始颜色
+    if (this.selectedBarIndex !== null && this.hoveredLayerIndex !== null) {
+      const bar = this.barCollectionManager.getBars()[this.selectedBarIndex];
+      if (bar) {
+        const layerObj = bar.innerLayers[this.hoveredLayerIndex];
+        if (layerObj && layerObj.mesh.userData.originalEmissive !== undefined) {
+          layerObj.mesh.material.emissive.setHex(layerObj.mesh.userData.originalEmissive);
+          layerObj.mesh.material.emissiveIntensity = layerObj.mesh.userData.originalEmissiveIntensity;
+        }
+      }
+    }
+
+    this.blinkState = false;
   }
 
   /**
@@ -158,6 +277,20 @@ class InteractionManager {
     // 更新射线
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
+    // 如果已有选中的柱状图，检测内层点击或其他柱状图点击
+    if (this.selectedBarIndex !== null) {
+      this._handleClickWithSelection();
+      return;
+    }
+
+    // 否则检测外层点击
+    this._handleOuterShellClick();
+  }
+
+  /**
+   * 处理外层点击
+   */
+  _handleOuterShellClick() {
     // 获取所有可拾取的外壳对象
     const outerShells = this._getPickableOuterShells();
 
@@ -176,9 +309,59 @@ class InteractionManager {
         bar: this.barCollectionManager.getBars()[barIndex]
       });
 
-      // 触发选中回调（预留给步骤二使用）
+      // 选中该柱状图
       this._onBarSelected(barIndex);
     }
+  }
+
+  /**
+   * 处理已有选中状态时的点击
+   */
+  _handleClickWithSelection() {
+    const bar = this.barCollectionManager.getBars()[this.selectedBarIndex];
+    if (!bar) return;
+
+    // 先检测是否点击了内层
+    const innerMeshes = bar.innerLayers.map(layerObj => layerObj.mesh);
+    const innerIntersects = this.raycaster.intersectObjects(innerMeshes);
+
+    if (innerIntersects.length > 0) {
+      // 点击了内层
+      const intersected = innerIntersects[0].object;
+      const layerIndex = intersected.userData.layerIndex;
+
+      console.log('点击了内层:', {
+        barIndex: this.selectedBarIndex,
+        layerIndex: layerIndex,
+        groupName: intersected.userData.groupName,
+        mesh: intersected,
+        layerData: intersected.userData
+      });
+      return;
+    }
+
+    // 检测是否点击了其他柱状图的外层
+    const outerShells = this._getPickableOuterShells();
+    const outerIntersects = this.raycaster.intersectObjects(outerShells);
+
+    if (outerIntersects.length > 0) {
+      const intersected = outerIntersects[0].object;
+      const barIndex = intersected.userData.barIndex;
+
+      console.log('点击了柱状图:', {
+        barIndex: barIndex,
+        groupName: intersected.userData.groupName,
+        mesh: intersected,
+        bar: this.barCollectionManager.getBars()[barIndex]
+      });
+
+      // 切换到新的柱状图
+      this._onBarSelected(barIndex);
+      return;
+    }
+
+    // 点击了空白区域，取消选中
+    this._clearBarSelection();
   }
 
   /**
@@ -199,17 +382,73 @@ class InteractionManager {
   }
 
   /**
-   * 柱状图被选中时的处理（预留给步骤二扩展）
+   * 柱状图被选中时的处理
    * @param {number} barIndex - 被选中的柱状图索引
    */
   _onBarSelected(barIndex) {
-    // 步骤一：仅记录选中状态
+    // 如果点击的是已选中的柱状图，不做处理
+    if (this.selectedBarIndex === barIndex) return;
+
+    // 恢复之前选中柱状图的外层可拾取状态
+    if (this.selectedBarIndex !== null) {
+      this._restoreOuterShellRaycast(this.selectedBarIndex);
+    }
+
+    // 停止内层闪烁
+    this._stopLayerBlink();
+    this.hoveredLayerIndex = null;
+
+    // 重置外层悬停状态
+    this._resetHoverState();
+    this.hoveredBarIndex = null;
+
+    // 设置新的选中状态
     this.selectedBarIndex = barIndex;
 
-    // 步骤二将在此处添加：
-    // 1. 禁用当前柱状图外层的射线检测
-    // 2. 启用内层交互
-    // 3. 恢复之前选中柱状图的外层可拾取状态
+    // 禁用当前柱状图外层的射线检测
+    this._disableOuterShellRaycast(barIndex);
+
+    console.log(`柱状图 ${barIndex} 已选中，外层射线检测已禁用，可以与内层交互`);
+  }
+
+  /**
+   * 清除柱状图选中状态
+   */
+  _clearBarSelection() {
+    if (this.selectedBarIndex === null) return;
+
+    // 停止内层闪烁
+    this._stopLayerBlink();
+    this.hoveredLayerIndex = null;
+
+    // 恢复外层可拾取状态
+    this._restoreOuterShellRaycast(this.selectedBarIndex);
+
+    console.log(`柱状图 ${this.selectedBarIndex} 已取消选中，外层射线检测已恢复`);
+
+    this.selectedBarIndex = null;
+  }
+
+  /**
+   * 禁用指定柱状图外层的射线检测
+   * @param {number} barIndex - 柱状图索引
+   */
+  _disableOuterShellRaycast(barIndex) {
+    const bar = this.barCollectionManager.getBars()[barIndex];
+    if (bar && bar.outerShell) {
+      bar.outerShell.userData.raycastEnabled = false;
+    }
+  }
+
+  /**
+   * 恢复指定柱状图外层的射线检测
+   * @param {number} barIndex - 柱状图索引
+   */
+  _restoreOuterShellRaycast(barIndex) {
+    const bar = this.barCollectionManager.getBars()[barIndex];
+    if (bar && bar.outerShell) {
+      bar.outerShell.userData.raycastEnabled = true;
+    }
   }
 
   /**
@@ -221,16 +460,24 @@ class InteractionManager {
   }
 
   /**
-   * 清除选中状态
+   * 清除选中状态（公开方法）
    */
   clearSelection() {
-    this.selectedBarIndex = null;
+    this._clearBarSelection();
   }
 
   /**
    * 销毁交互管理器，移除事件监听
    */
   dispose() {
+    // 停止内层闪烁
+    this._stopLayerBlink();
+
+    // 恢复选中柱状图的外层可拾取状态
+    if (this.selectedBarIndex !== null) {
+      this._restoreOuterShellRaycast(this.selectedBarIndex);
+    }
+
     // 重置悬停状态
     this._resetHoverState();
     this.domElement.style.cursor = 'default';
@@ -241,6 +488,7 @@ class InteractionManager {
 
     this.selectedBarIndex = null;
     this.hoveredBarIndex = null;
+    this.hoveredLayerIndex = null;
   }
 }
 

@@ -31,6 +31,11 @@
 - ✅ **鼠标拖拽旋转**：按住左键拖拽，360° 查看场景
 - ✅ **滚轮缩放**：拉近/拉远视角（范围 50-300 单位）
 - ✅ **球坐标系统**：流畅的相机运动
+- ✅ **射线追踪交互**：
+  - 外层悬停：柱状图放大效果（scale 1.1）
+  - 外层点击：选中柱状图，进入内层交互模式
+  - 内层悬停：该层闪烁高亮（黄色）
+  - 内层点击：控制台输出层级详细信息
 
 ### 4. **性能优化**
 - ✅ **几何体缩放**：使用 scale 而非重建几何体，减少内存开销
@@ -57,7 +62,8 @@
 │   │   ├── ThreeScene.js           # 场景管理类（场景、相机、渲染器、灯光、CSS2DRenderer）
 │   │   ├── BarManager.js           # 柱状图管理类（创建、更新、销毁）
 │   │   ├── CameraControls.js       # 相机控制类（旋转、缩放）
-│   │   └── GroupIndicatorManager.js # 堆指示器管理类（边框、标签）
+│   │   ├── GroupIndicatorManager.js # 堆指示器管理类（边框、标签）
+│   │   └── InteractionManager.js   # 交互管理类（射线追踪、悬停、点击）
 │   ├── workers/
 │   │   └── dataGenerator.worker.js # 数据生成器（生成器 + sleep）
 │   ├── App.js                      # 根组件
@@ -65,7 +71,8 @@
 │   └── index.css                   # 全局样式
 ├── public/
 ├── package.json
-└── 说明文档.md
+├── 射线追踪法交互.md               # 交互功能详细说明文档
+└── README.md
 ```
 
 ---
@@ -108,8 +115,11 @@ npm run preview
 1. **查看场景**：打开浏览器，自动加载 3D 场景
 2. **旋转视角**：按住鼠标左键拖拽
 3. **缩放视角**：滚动鼠标滚轮
-4. **观察数据更新**：每 5 秒柱状图高度自动变化
-5. **控制台调试**：F12 打开开发者工具，查看日志
+4. **悬停交互**：鼠标悬停柱状图，柱状图放大
+5. **选中柱状图**：点击柱状图进入内层交互模式
+6. **内层交互**：悬停内层闪烁，点击内层输出信息
+7. **切换/取消选中**：点击其他柱状图切换，点击空白区域取消
+8. **控制台调试**：F12 打开开发者工具，查看日志
 
 ---
 
@@ -172,6 +182,28 @@ renderer.render(scene, camera);
 labelRenderer.render(scene, camera);
 ```
 
+### 5. 射线追踪交互系统
+```javascript
+// 创建射线追踪器
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+// 计算归一化设备坐标
+mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+// 从相机发射射线
+raycaster.setFromCamera(mouse, camera);
+
+// 检测与物体的相交
+const intersects = raycaster.intersectObjects(targetObjects);
+
+// 通过 userData.raycastEnabled 控制外层是否可拾取
+// 选中柱状图后禁用外层，从而可以拾取内层
+```
+
+> 详细实现请参考 [射线追踪法交互.md](./射线追踪法交互.md)
+
 ---
 
 ## 🔧 已解决的问题
@@ -188,6 +220,10 @@ labelRenderer.render(scene, camera);
    - Worker 中 `self` 警告：添加 `/* eslint-disable no-restricted-globals */`
    - 未使用变量：清理冗余代码
 
+4. **外层遮挡内层拾取问题**：
+   - 原因：射线追踪会优先命中外层透明物体
+   - 解决：通过 `userData.raycastEnabled` 动态控制外层是否参与射线检测
+
 ---
 
 ## 📋 后续开发计划
@@ -195,7 +231,7 @@ labelRenderer.render(scene, camera);
 ### 短期优化（1-2天）
 
 #### 1. **视觉效果增强**
-- [ ] 添加柱状图 hover 高亮效果
+- [x] 添加柱状图 hover 高亮效果
 - [ ] 鼠标悬停显示数据标签（Tooltip）
 - [ ] 柱状图高度变化添加平滑动画（Tween.js）
 - [ ] 添加网格辅助线或底板
@@ -204,7 +240,7 @@ labelRenderer.render(scene, camera);
 #### 2. **交互功能扩展**
 - [ ] 添加平移功能（鼠标右键拖拽）
 - [ ] 添加自动旋转模式（开关按钮）
-- [ ] 点击柱状图查看详细数据
+- [x] 点击柱状图查看详细数据
 - [ ] 添加重置视角按钮
 
 #### 3. **数据展示优化**
@@ -328,6 +364,20 @@ labelRenderer.render(scene, camera);
 
 ## 📝 更新日志
 
+### v1.3.0 (2025-12-05)
+- ✅ 新增交互管理器 `InteractionManager.js`
+  - 基于射线追踪法（Raycaster）实现3D物体拾取
+  - 支持外层柱状图悬停放大效果（scale 1.1）
+  - 支持外层柱状图点击选中
+  - 支持内层悬停闪烁高亮（黄色，200ms间隔）
+  - 支持内层点击输出详细信息
+- ✅ 优化 `BarManager.js`
+  - 外层和内层 Mesh 添加 `userData` 标记（type、barIndex、groupName）
+  - 外层支持 `raycastEnabled` 动态控制射线检测
+- ✅ 解决外层遮挡内层拾取问题
+  - 选中柱状图后禁用该柱状图外层射线检测
+  - 点击其他柱状图或空白区域时恢复外层可拾取状态
+
 ### v1.2.0 (2025-12-02)
 - ✅ 新增柱状图内部多层分层功能
   - 柱状堆A（数据集A）：每个柱状图20层
@@ -378,4 +428,4 @@ labelRenderer.render(scene, camera);
 ---
 
 *项目创建时间：2025-11-26*
-*最后更新时间：2025-12-02*
+*最后更新时间：2025-12-05*
