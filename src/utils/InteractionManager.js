@@ -30,7 +30,7 @@ class InteractionManager {
     this.hoveredLayerIndex = null;
 
     // 悬停缩放比例
-    this.hoverScale = 1.1;
+    this.hoverScale = 1.5;
 
     // 内层闪烁动画相关
     this.blinkInterval = null;
@@ -75,7 +75,7 @@ class InteractionManager {
     // 如果有选中的柱状图，优先检测内层悬停
     if (this.selectedBarIndex !== null) {
       this._handleInnerLayerHover();
-      return;
+      // return;
     }
 
     // 否则检测外层悬停

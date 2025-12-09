@@ -23,7 +23,7 @@ class ThreeScene {
   init() {
     // 创建场景
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xd3d3d3); // 淡灰色背景
+    this.scene.background = new THREE.Color('#1B1E28'); // 淡灰色背景
 
     //创建坐标辅助器，仅用于区分笛卡尔坐标 ：X 轴为红色，Y 轴为绿色，Z 轴为蓝色
     const axesHelper = new THREE.AxesHelper(200)
