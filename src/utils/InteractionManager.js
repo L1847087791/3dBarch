@@ -36,6 +36,17 @@ class InteractionManager {
     this.blinkInterval = null;
     this.blinkState = false;
 
+    // 选中光标相关
+    this.selectionCursor = null; // 金色光标 Mesh
+    this.cursorOffset = 4;     // 光标距离柱状图顶部的偏移量
+
+    // 光标动画相关
+    this.cursorRotationSpeed = 0.02;  // 旋转速度（弧度/帧）
+    this.cursorFloatSpeed = 0.03;     // 上下浮动速度
+    this.cursorFloatAmplitude = 0.5;  // 上下浮动幅度
+    this.cursorFloatOffset = 0;       // 浮动偏移量（用于计算当前位置）
+    this.cursorBaseY = 0;             // 光标基准Y坐标
+
     // 绑定事件处理函数（保持 this 引用）
     this._onMouseClick = this._onMouseClick.bind(this);
     this._onMouseMove = this._onMouseMove.bind(this);
@@ -214,6 +225,130 @@ class InteractionManager {
     }
 
     this.blinkState = false;
+  }
+
+  /**
+   * 创建选中光标（金色箭头指示器：线+箭头）
+   * @param {number} barIndex - 柱状图索引
+   */
+  _createSelectionCursor(barIndex) {
+    const bar = this.barCollectionManager.getBars()[barIndex];
+    if (!bar) return;
+
+    // 如果已存在光标，先移除
+    this._removeSelectionCursor();
+
+    // 创建光标组（包含线和箭头）
+    this.selectionCursor = new THREE.Group();
+
+    // 金色发光材质
+    const cursorMaterial = new THREE.MeshBasicMaterial({
+      color: 0xFFD700,           // 金色
+      emissive: 0xFFD700,        // 金色发光
+      emissiveIntensity: 1.0     // 发光强度
+    });
+
+    // 1. 创建细长的线（圆柱体）
+    const lineHeight = 8;        // 线的长度
+    const lineRadius = 0.4;     // 线的粗细
+    const lineGeometry = new THREE.CylinderGeometry(
+      lineRadius,
+      lineRadius,
+      lineHeight,
+      8
+    );
+    const line = new THREE.Mesh(lineGeometry, cursorMaterial.clone());
+    line.position.y = lineHeight / 2; // 线在上方
+    this.selectionCursor.add(line);
+
+    // 2. 创建箭头（三角锥，尖端朝下）
+    const arrowHeight = 1.2;     // 箭头高度
+    const arrowRadius = 1;     // 箭头底部半径
+    const arrowGeometry = new THREE.ConeGeometry(arrowRadius, arrowHeight, 4);
+    const arrow = new THREE.Mesh(arrowGeometry, cursorMaterial.clone());
+    arrow.position.y = -arrowHeight / 2; // 箭头在下方
+    arrow.rotation.x = Math.PI; // 旋转180度，使尖端朝下
+    this.selectionCursor.add(arrow);
+
+    // 标记光标，避免被射线拾取
+    this.selectionCursor.userData = {
+      type: 'selectionCursor',
+      raycastEnabled: false
+    };
+
+    // 更新光标位置
+    this._updateCursorPosition(barIndex);
+
+    // 添加到场景
+    this.barCollectionManager.scene.add(this.selectionCursor);
+  }
+
+  /**
+   * 移除选中光标
+   */
+  _removeSelectionCursor() {
+    if (this.selectionCursor) {
+      // 遍历光标组中的所有子对象，清理几何体和材质
+      this.selectionCursor.traverse((child) => {
+        if (child.geometry) {
+          child.geometry.dispose();
+        }
+        if (child.material) {
+          child.material.dispose();
+        }
+      });
+
+      // 从场景中移除
+      this.barCollectionManager.scene.remove(this.selectionCursor);
+
+      this.selectionCursor = null;
+    }
+  }
+
+  /**
+   * 更新光标位置（定位到柱状图顶部上方）
+   * @param {number} barIndex - 柱状图索引
+   */
+  _updateCursorPosition(barIndex) {
+    if (!this.selectionCursor) return;
+
+    const bar = this.barCollectionManager.getBars()[barIndex];
+    if (!bar) return;
+
+    // 计算柱状图顶部的Y坐标
+    // 外壳底部Y坐标 + 外壳高度 = 顶部Y坐标
+    const shellTopY = bar.position.y + bar.maxHeight;
+
+    // 光标位置：柱状图顶部 + 偏移量
+    const cursorY = shellTopY + this.cursorOffset;
+
+    // 保存基准Y坐标（用于动画）
+    this.cursorBaseY = cursorY;
+
+    // 设置光标位置（X和Z与柱状图中心对齐）
+    this.selectionCursor.position.set(
+      bar.position.x,
+      cursorY,
+      bar.position.z
+    );
+  }
+
+  /**
+   * 更新光标动画（在渲染循环中每帧调用）
+   * 实现旋转和上下浮动效果
+   */
+  updateCursorAnimate() {
+    if (!this.selectionCursor) return;
+
+    // 1. 旋转动画（绕Y轴旋转）
+    this.selectionCursor.rotation.y += this.cursorRotationSpeed;
+
+    // 2. 上下浮动动画（使用正弦波）
+    this.cursorFloatOffset += this.cursorFloatSpeed;
+    const floatY = Math.sin(this.cursorFloatOffset) * this.cursorFloatAmplitude;
+
+    // 更新Y坐标（基准位置 + 浮动偏移）
+    this.selectionCursor.position.y = this.cursorBaseY + floatY;
   }
 
   /**
@@ -408,6 +543,9 @@ class InteractionManager {
     // 禁用当前柱状图外层的射线检测
     this._disableOuterShellRaycast(barIndex);
 
+    // 创建选中光标
+    this._createSelectionCursor(barIndex);
+
     console.log(`柱状图 ${barIndex} 已选中，外层射线检测已禁用，可以与内层交互`);
   }
 
@@ -423,6 +561,9 @@ class InteractionManager {
 
     // 恢复外层可拾取状态
     this._restoreOuterShellRaycast(this.selectedBarIndex);
+
+    // 移除选中光标
+    this._removeSelectionCursor();
 
     console.log(`柱状图 ${this.selectedBarIndex} 已取消选中，外层射线检测已恢复`);
 
@@ -477,6 +618,9 @@ class InteractionManager {
     if (this.selectedBarIndex !== null) {
       this._restoreOuterShellRaycast(this.selectedBarIndex);
     }
+
+    // 移除选中光标
+    this._removeSelectionCursor();
 
     // 重置悬停状态
     this._resetHoverState();

@@ -209,6 +209,12 @@ const BarChart3D = () => {
     // 渲染循环
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate);
+
+      // 更新交互管理器动画（光标旋转和浮动）
+      if (interactionRef.current) {
+        interactionRef.current.updateCursorAnimate();
+      }
+
       if (sceneRef.current) {
         sceneRef.current.render();
       }
