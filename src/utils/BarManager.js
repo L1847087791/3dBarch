@@ -1,6 +1,30 @@
 import * as THREE from 'three';
 
 /**
+ * 全局共享材质（性能优化：避免材质切换开销）
+ */
+const SharedMaterials = {
+  // 外壳材质（透明）
+  outerShell: new THREE.MeshBasicMaterial({
+    color: '#EDF2FA',
+    transparent: true,
+    opacity: 0.2,
+  }),
+  // 内层材质（Phong光照）
+  innerLayer: new THREE.MeshPhongMaterial({
+    color: '#EDF2FA',
+    emissive: 0xaaaaaa,
+    emissiveIntensity: 0.3,
+    shininess: 50
+  }),
+  // 边框材质
+  edges: new THREE.LineBasicMaterial({
+    color: 0xffffff,
+    linewidth: 1
+  })
+};
+
+/**
  * 柱状图管理类
  * 负责创建和管理单个柱状图（外壳 + 多层内部实体）
  */
@@ -35,18 +59,13 @@ class BarManager {
    * 创建柱状图
    */
   createBar() {
-    // 创建外壳（透明白色）
+    // 创建外壳（透明白色）- 使用共享材质
     const shellGeometry = new THREE.BoxGeometry(
       this.barWidth,
       this.maxHeight,
       this.barWidth
     );
-    const shellMaterial = new THREE.MeshBasicMaterial({
-      color:'#EDF2FA',
-      transparent: true,
-      opacity: 0.2,
-    });
-    this.outerShell = new THREE.Mesh(shellGeometry, shellMaterial);
+    this.outerShell = new THREE.Mesh(shellGeometry, SharedMaterials.outerShell);
     this.outerShell.position.set(
       this.position.x,
       this.position.y + this.maxHeight / 2,
@@ -71,15 +90,12 @@ class BarManager {
    * 空间分配：底部间隔 + 层1 + 间隔 + 层2 + ... + 层n + 顶部间隔 = 外层高度
    */
   createLayers() {
-    // 清空现有层
+    // 清空现有层（只清理 geometry，不清理共享材质）
     this.innerLayers.forEach(layerObj => {
       layerObj.mesh.geometry.dispose();
-      layerObj.mesh.material.dispose();
       this.scene.remove(layerObj.mesh);
-      // 清理边框
       if (layerObj.edges) {
         layerObj.edges.geometry.dispose();
-        layerObj.edges.material.dispose();
         this.scene.remove(layerObj.edges);
       }
     });
@@ -100,23 +116,12 @@ class BarManager {
         this.barWidth * 0.9
       );
 
-      // 内层材质（调浅颜色，降低发光强度）
-      const layerMaterial = new THREE.MeshPhongMaterial({
-        color:'#EDF2FA',        // 浅灰色
-        emissive: 0xaaaaaa,     // 浅灰色发光
-        emissiveIntensity: 0.3, // 降低发光强度
-        shininess: 50
-      });
+      // 使用共享内层材质
+      const layerMesh = new THREE.Mesh(layerGeometry, SharedMaterials.innerLayer);
 
-      const layerMesh = new THREE.Mesh(layerGeometry, layerMaterial);
-
-      // 创建边框（使用EdgesGeometry + LineSegments，高性能方式）
+      // 创建边框（使用共享边框材质）
       const edgesGeometry = new THREE.EdgesGeometry(layerGeometry);
-      const edgesMaterial = new THREE.LineBasicMaterial({
-        color: 0xffffff,  // 亮白色边框
-        linewidth: 1
-      });
-      const edges = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+      const edges = new THREE.LineSegments(edgesGeometry, SharedMaterials.edges);
 
       // 初始化缩放为很小
       layerMesh.scale.y = 0.002;
@@ -212,22 +217,21 @@ class BarManager {
 
   /**
    * 销毁柱状图
+   * 注意：共享材质不在此处销毁，由 SharedMaterials 统一管理
    */
   dispose() {
     if (this.outerShell) {
       this.outerShell.geometry.dispose();
-      this.outerShell.material.dispose();
+      // 不销毁共享材质
       this.scene.remove(this.outerShell);
     }
 
-    // 销毁所有内部层（包括mesh和边框）
+    // 销毁所有内部层（只销毁 geometry，不销毁共享材质）
     this.innerLayers.forEach(layerObj => {
       layerObj.mesh.geometry.dispose();
-      layerObj.mesh.material.dispose();
       this.scene.remove(layerObj.mesh);
       if (layerObj.edges) {
         layerObj.edges.geometry.dispose();
-        layerObj.edges.material.dispose();
         this.scene.remove(layerObj.edges);
       }
     });
@@ -291,4 +295,4 @@ class BarCollectionManager {
   }
 }
 
-export { BarManager, BarCollectionManager };
+export { BarManager, BarCollectionManager, SharedMaterials };

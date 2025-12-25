@@ -171,6 +171,7 @@ class InteractionManager {
 
   /**
    * 开始内层闪烁效果
+   * 为避免共享材质影响其他层，需要为该层创建独立材质副本
    */
   _startLayerBlink() {
     if (this.selectedBarIndex === null || this.hoveredLayerIndex === null) return;
@@ -181,9 +182,16 @@ class InteractionManager {
     const layerObj = bar.innerLayers[this.hoveredLayerIndex];
     if (!layerObj) return;
 
-    // 保存原始颜色
-    layerObj.mesh.userData.originalEmissive = layerObj.mesh.material.emissive.getHex();
-    layerObj.mesh.userData.originalEmissiveIntensity = layerObj.mesh.material.emissiveIntensity;
+    // 保存原始共享材质的引用
+    layerObj.mesh.userData.originalMaterial = layerObj.mesh.material;
+
+    // 克隆一个独立材质副本用于闪烁效果
+    const blinkMaterial = layerObj.mesh.material.clone();
+    layerObj.mesh.material = blinkMaterial;
+
+    // 保存原始颜色（从克隆的材质获取）
+    layerObj.mesh.userData.originalEmissive = blinkMaterial.emissive.getHex();
+    layerObj.mesh.userData.originalEmissiveIntensity = blinkMaterial.emissiveIntensity;
 
     // 开始闪烁动画
     this.blinkState = false;
@@ -205,6 +213,7 @@ class InteractionManager {
 
   /**
    * 停止内层闪烁效果
+   * 恢复共享材质并销毁克隆的材质副本
    */
   _stopLayerBlink() {
     if (this.blinkInterval) {
@@ -212,14 +221,22 @@ class InteractionManager {
       this.blinkInterval = null;
     }
 
-    // 恢复内层原始颜色
+    // 恢复内层原始共享材质
     if (this.selectedBarIndex !== null && this.hoveredLayerIndex !== null) {
       const bar = this.barCollectionManager.getBars()[this.selectedBarIndex];
       if (bar) {
         const layerObj = bar.innerLayers[this.hoveredLayerIndex];
-        if (layerObj && layerObj.mesh.userData.originalEmissive !== undefined) {
-          layerObj.mesh.material.emissive.setHex(layerObj.mesh.userData.originalEmissive);
-          layerObj.mesh.material.emissiveIntensity = layerObj.mesh.userData.originalEmissiveIntensity;
+        if (layerObj && layerObj.mesh.userData.originalMaterial) {
+          // 销毁克隆的材质副本
+          if (layerObj.mesh.material !== layerObj.mesh.userData.originalMaterial) {
+            layerObj.mesh.material.dispose();
+          }
+          // 恢复共享材质
+          layerObj.mesh.material = layerObj.mesh.userData.originalMaterial;
+          // 清理 userData
+          delete layerObj.mesh.userData.originalMaterial;
+          delete layerObj.mesh.userData.originalEmissive;
+          delete layerObj.mesh.userData.originalEmissiveIntensity;
         }
       }
     }
