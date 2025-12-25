@@ -30,8 +30,8 @@ class ThreeScene {
     this.scene.add(axesHelper);
 
     //创建网格辅助器，调试场景图位置
-    // const grideHelper = new THREE.GridHelper(500,50)   //步长为500/50=10
-    // this.scene.add(grideHelper)
+    const grideHelper = new THREE.GridHelper(1000,100)   //步长为1000/100=10
+    this.scene.add(grideHelper)
 
     // 创建透视相机
     const width = this.container.clientWidth;

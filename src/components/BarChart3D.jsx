@@ -7,7 +7,7 @@ import InteractionManager from '../utils/InteractionManager';
 
 /**
  * 生成柱状图位置
- * 3堆柱状图：30 + 30 + 20，矩形排列
+ * 3堆柱状图：30 + 120 + 20，矩形排列
  * 采用三角形分布，充分利用X-Z平面空间
  * @returns {Object} positions - 位置数组和层数配置
  */
@@ -17,12 +17,12 @@ function generateBarPositions() {
   const groupNames = [];  // 存储每个柱状图所属堆名称
   const spacing = 20; // 柱状图之间的间距
 
-  // 第一堆：30个 (6x5) - 左前方 - 每个柱状图20层
-  const group1Rows = 5;
+  // 第一堆：60个 (6x10) - 左前方 - 每个柱状图50层
+  const group1Rows = 10;
   const group1Cols = 6;
   const group1StartX = -100; // 左侧
-  const group1StartZ = -100; // 前方
-  const group1LayerCount = 20; // A堆每个柱状图20层
+  const group1StartZ = -200; // 前方
+  const group1LayerCount = 50; // A堆每个柱状图50层
   for (let row = 0; row < group1Rows; row++) {
     for (let col = 0; col < group1Cols; col++) {
       positions.push({
@@ -35,12 +35,12 @@ function generateBarPositions() {
     }
   }
 
-  // 第二堆：30个 (6x5) - 右前方 - 每个柱状图30层
-  const group2Rows = 5;
+  // 第二堆：60个 (6x10) - 右前方 - 每个柱状图50层
+  const group2Rows = 10;
   const group2Cols = 6;
   const group2StartX = 100; // 右侧
   const group2StartZ = -100; // 前方
-  const group2LayerCount = 30; // B堆每个柱状图30层
+  const group2LayerCount = 50; // B堆每个柱状图50层
   for (let row = 0; row < group2Rows; row++) {
     for (let col = 0; col < group2Cols; col++) {
       positions.push({
@@ -53,12 +53,12 @@ function generateBarPositions() {
     }
   }
 
-  // 第三堆：20个 (5x4) - 后中方 - 每个柱状图10层
-  const group3Rows = 4;
+  // 第三堆：40个 (5x8) - 后中方 - 每个柱状图10层
+  const group3Rows = 8;
   const group3Cols = 5;
   const group3StartX = -50; // 中间偏左
   const group3StartZ = 100; // 后方
-  const group3LayerCount = 10; // C堆每个柱状图10层
+  const group3LayerCount = 50; // C堆每个柱状图50层
   for (let row = 0; row < group3Rows; row++) {
     for (let col = 0; col < group3Cols; col++) {
       positions.push({
@@ -135,15 +135,15 @@ const BarChart3D = () => {
     // 创建柱状图管理器
     barManagerRef.current = new BarCollectionManager(scene);
     const { positions, layerCounts, groupNames } = generateBarPositions();
-    barManagerRef.current.createBars(positions, 8, 20, layerCounts, groupNames);
+    barManagerRef.current.createBars(positions, 8, 40, layerCounts, groupNames);
 
-    console.log('已创建 80 个柱状图，层数分配：A堆20层、B堆30层、C堆10层');
+    console.log('已创建 160 个柱状图，层数分配：A堆60层、B堆60层、C堆40层');
     // console.log(barManagerRef.current.getBars())
 
     // 创建堆指示器（边框和标签）
-    groupIndicatorRef.current = new GroupIndicatorManager(scene);
-    const groupsInfo = generateGroupIndicatorInfo();
-    groupIndicatorRef.current.createAllIndicators(groupsInfo);
+    // groupIndicatorRef.current = new GroupIndicatorManager(scene);
+    // const groupsInfo = generateGroupIndicatorInfo();
+    // groupIndicatorRef.current.createAllIndicators(groupsInfo);
 
     console.log('已创建堆指示器（边框和标签）');
 
@@ -157,13 +157,6 @@ const BarChart3D = () => {
     });
 
     console.log('已初始化默认分层数据');
-
-    // ========== 注释掉 Worker 数据传输部分 ==========
-    // // 初始化所有柱状图高度为随机值（便于测试）
-    // const initialData = new Array(80).fill(0).map(() => Math.random() * 50 + 20);
-    // barManagerRef.current.updateAllHeights(initialData);
-
-    // console.log('初始数据已设置');
 
     // 设置相机控制
     controlsRef.current = new CameraControls(
@@ -182,29 +175,6 @@ const BarChart3D = () => {
     );
 
     console.log('交互管理器已设置');
-
-    // ========== 注释掉 Worker 启动和数据传输部分 ==========
-    // // 启动 Worker
-    // workerRef.current = new Worker(
-    //   new URL('../workers/dataGenerator.worker.js', import.meta.url)
-    // );
-
-    // workerRef.current.addEventListener('message', (event) => {
-    //   const { type, payload } = event.data;
-    //   if (type === 'data' && payload) {
-    //     // 更新柱状图高度
-    //     barManagerRef.current.updateAllHeights(payload);
-    //     console.log('数据已更新');
-    //   }
-    // });
-
-    // // 启动数据生成（80个柱状图，5秒间隔）
-    // workerRef.current.postMessage({
-    //   type: 'start',
-    //   payload: { count: 80, interval: 5000 }
-    // });
-
-    // console.log('Worker 已启动');
 
     // 渲染循环
     const animate = () => {

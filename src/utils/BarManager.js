@@ -41,13 +41,10 @@ class BarManager {
       this.maxHeight,
       this.barWidth
     );
-    const shellMaterial = new THREE.MeshPhysicalMaterial({
-      color: 0xffffff,
+    const shellMaterial = new THREE.MeshBasicMaterial({
+      color:'#EDF2FA',
       transparent: true,
       opacity: 0.2,
-      side: THREE.DoubleSide,
-      roughness: 0.1,
-      metalness: 0.1
     });
     this.outerShell = new THREE.Mesh(shellGeometry, shellMaterial);
     this.outerShell.position.set(
@@ -105,7 +102,7 @@ class BarManager {
 
       // 内层材质（调浅颜色，降低发光强度）
       const layerMaterial = new THREE.MeshPhongMaterial({
-        color: 0xcccccc,        // 浅灰色
+        color:'#EDF2FA',        // 浅灰色
         emissive: 0xaaaaaa,     // 浅灰色发光
         emissiveIntensity: 0.3, // 降低发光强度
         shininess: 50
