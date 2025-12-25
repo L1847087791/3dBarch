@@ -25,6 +25,66 @@ const SharedMaterials = {
 };
 
 /**
+ * 几何体缓存管理器（性能优化：避免重复创建相同几何体）
+ * 使用 key 缓存不同尺寸的几何体
+ */
+const GeometryCache = {
+  // 外壳几何体缓存 key: "width_height" -> geometry
+  outerShellCache: new Map(),
+  // 内层几何体缓存 key: "width_height" -> geometry
+  innerLayerCache: new Map(),
+  // 边框几何体缓存 key: "width_height" -> geometry
+  edgesCache: new Map(),
+
+  /**
+   * 获取或创建外壳几何体
+   */
+  getOuterShellGeometry(width, height) {
+    const key = `${width}_${height}`;
+    if (!this.outerShellCache.has(key)) {
+      this.outerShellCache.set(key, new THREE.BoxGeometry(width, height, width));
+    }
+    return this.outerShellCache.get(key);
+  },
+
+  /**
+   * 获取或创建内层几何体
+   */
+  getInnerLayerGeometry(width, height) {
+    const key = `${width}_${height}`;
+    if (!this.innerLayerCache.has(key)) {
+      this.innerLayerCache.set(key, new THREE.BoxGeometry(width, height, width));
+    }
+    return this.innerLayerCache.get(key);
+  },
+
+  /**
+   * 获取或创建边框几何体
+   */
+  getEdgesGeometry(width, height) {
+    const key = `${width}_${height}`;
+    if (!this.edgesCache.has(key)) {
+      // EdgesGeometry 需要基于 BoxGeometry 创建
+      const boxGeom = this.getInnerLayerGeometry(width, height);
+      this.edgesCache.set(key, new THREE.EdgesGeometry(boxGeom));
+    }
+    return this.edgesCache.get(key);
+  },
+
+  /**
+   * 清理所有缓存的几何体
+   */
+  dispose() {
+    this.outerShellCache.forEach(geom => geom.dispose());
+    this.outerShellCache.clear();
+    this.innerLayerCache.forEach(geom => geom.dispose());
+    this.innerLayerCache.clear();
+    this.edgesCache.forEach(geom => geom.dispose());
+    this.edgesCache.clear();
+  }
+};
+
+/**
  * 柱状图管理类
  * 负责创建和管理单个柱状图（外壳 + 多层内部实体）
  */
@@ -59,12 +119,8 @@ class BarManager {
    * 创建柱状图
    */
   createBar() {
-    // 创建外壳（透明白色）- 使用共享材质
-    const shellGeometry = new THREE.BoxGeometry(
-      this.barWidth,
-      this.maxHeight,
-      this.barWidth
-    );
+    // 创建外壳（透明白色）- 使用共享材质和缓存几何体
+    const shellGeometry = GeometryCache.getOuterShellGeometry(this.barWidth, this.maxHeight);
     this.outerShell = new THREE.Mesh(shellGeometry, SharedMaterials.outerShell);
     this.outerShell.position.set(
       this.position.x,
@@ -90,12 +146,10 @@ class BarManager {
    * 空间分配：底部间隔 + 层1 + 间隔 + 层2 + ... + 层n + 顶部间隔 = 外层高度
    */
   createLayers() {
-    // 清空现有层（只清理 geometry，不清理共享材质）
+    // 清空现有层（几何体由缓存管理，不在此处 dispose）
     this.innerLayers.forEach(layerObj => {
-      layerObj.mesh.geometry.dispose();
       this.scene.remove(layerObj.mesh);
       if (layerObj.edges) {
-        layerObj.edges.geometry.dispose();
         this.scene.remove(layerObj.edges);
       }
     });
@@ -107,20 +161,19 @@ class BarManager {
     const availableHeight = this.maxHeight - totalGap;
     const layerBaseHeight = availableHeight / this.layerCount;
 
+    // 内层尺寸
+    const innerWidth = this.barWidth * 0.9;
+
+    // 获取缓存的几何体（所有层共享同一个几何体）
+    const layerGeometry = GeometryCache.getInnerLayerGeometry(innerWidth, layerBaseHeight);
+    const edgesGeometry = GeometryCache.getEdgesGeometry(innerWidth, layerBaseHeight);
+
     // 创建每一层
     for (let i = 0; i < this.layerCount; i++) {
-      // 每层使用基础高度的几何体
-      const layerGeometry = new THREE.BoxGeometry(
-        this.barWidth * 0.9, // 稍微小一点，避免与外壳重叠
-        layerBaseHeight,
-        this.barWidth * 0.9
-      );
-
-      // 使用共享内层材质
+      // 使用共享几何体和材质
       const layerMesh = new THREE.Mesh(layerGeometry, SharedMaterials.innerLayer);
 
-      // 创建边框（使用共享边框材质）
-      const edgesGeometry = new THREE.EdgesGeometry(layerGeometry);
+      // 创建边框（使用共享几何体和材质）
       const edges = new THREE.LineSegments(edgesGeometry, SharedMaterials.edges);
 
       // 初始化缩放为很小
@@ -217,21 +270,18 @@ class BarManager {
 
   /**
    * 销毁柱状图
-   * 注意：共享材质不在此处销毁，由 SharedMaterials 统一管理
+   * 注意：共享材质和几何体由缓存统一管理，不在此处销毁
    */
   dispose() {
     if (this.outerShell) {
-      this.outerShell.geometry.dispose();
-      // 不销毁共享材质
+      // 几何体和材质由缓存管理，只从场景移除
       this.scene.remove(this.outerShell);
     }
 
-    // 销毁所有内部层（只销毁 geometry，不销毁共享材质）
+    // 移除所有内部层（几何体和材质由缓存管理）
     this.innerLayers.forEach(layerObj => {
-      layerObj.mesh.geometry.dispose();
       this.scene.remove(layerObj.mesh);
       if (layerObj.edges) {
-        layerObj.edges.geometry.dispose();
         this.scene.remove(layerObj.edges);
       }
     });
@@ -295,4 +345,4 @@ class BarCollectionManager {
   }
 }
 
-export { BarManager, BarCollectionManager, SharedMaterials };
+export { BarManager, BarCollectionManager, SharedMaterials, GeometryCache };
