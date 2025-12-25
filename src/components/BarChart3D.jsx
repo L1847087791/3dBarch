@@ -147,14 +147,13 @@ const BarChart3D = () => {
 
     console.log('已创建堆指示器（边框和标签）');
 
-    // 初始化默认分层数据
+    // 初始化默认分层数据 - 使用 updateAllHeights 批量更新以同步 InstancedMesh
     const bars = barManagerRef.current.getBars();
-    bars.forEach((bar) => {
-      const layerCount = bar.layerCount;
+    const allLayerData = bars.map((bar) => {
       // 为每层设置满高度数据值（100），使每层显示为完整高度
-      const layerData = Array.from({ length: layerCount }, () => 100);
-      bar.updateHeight(layerData);
+      return Array.from({ length: bar.layerCount }, () => 100);
     });
+    barManagerRef.current.updateAllHeights(allLayerData);
 
     console.log('已初始化默认分层数据');
 
