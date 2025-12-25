@@ -95,30 +95,42 @@ class InteractionManager {
 
   /**
    * 处理外层悬停检测
+   * 使用 InstancedMesh 射线检测
    */
   _handleOuterShellHover() {
-    // 获取所有可拾取的外壳对象
-    const outerShells = this._getPickableOuterShells();
+    // 获取外壳 InstancedMesh
+    const outerShellInstancedMesh = this.barCollectionManager.getOuterShellInstancedMesh();
+    if (!outerShellInstancedMesh) return;
 
     // 进行射线检测
-    const intersects = this.raycaster.intersectObjects(outerShells);
+    const intersects = this.raycaster.intersectObject(outerShellInstancedMesh);
 
     if (intersects.length > 0) {
-      const intersected = intersects[0].object;
-      const barIndex = intersected.userData.barIndex;
+      const intersected = intersects[0];
+      const barIndex = intersected.instanceId;
 
-      // 如果悬停到新的柱状图
-      if (this.hoveredBarIndex !== barIndex) {
-        // 恢复之前悬停的柱状图
-        this._resetHoverState();
-
-        // 设置新的悬停状态
-        this.hoveredBarIndex = barIndex;
-        this._applyHoverState(barIndex);
-
-        // 改变鼠标样式
-        this.domElement.style.cursor = 'pointer';
+      // 检查是否可拾取（未被选中）
+      const bar = this.barCollectionManager.getBars()[barIndex];
+      if (!bar || bar.outerShell.userData.raycastEnabled === false) {
+        // 如果当前悬停的柱状图不可拾取，尝试检测下一个
+        if (intersects.length > 1) {
+          const nextBarIndex = intersects[1].instanceId;
+          const nextBar = this.barCollectionManager.getBars()[nextBarIndex];
+          if (nextBar && nextBar.outerShell.userData.raycastEnabled !== false) {
+            this._processOuterShellHover(nextBarIndex);
+            return;
+          }
+        }
+        // 没有可拾取的柱状图
+        if (this.hoveredBarIndex !== null && this.hoveredBarIndex !== this.selectedBarIndex) {
+          this._resetHoverState();
+          this.hoveredBarIndex = null;
+          this.domElement.style.cursor = 'default';
+        }
+        return;
       }
+
+      this._processOuterShellHover(barIndex);
     } else {
       // 鼠标移出所有柱状图
       if (this.hoveredBarIndex !== null) {
@@ -126,6 +138,24 @@ class InteractionManager {
         this.hoveredBarIndex = null;
         this.domElement.style.cursor = 'default';
       }
+    }
+  }
+
+  /**
+   * 处理外壳悬停逻辑
+   */
+  _processOuterShellHover(barIndex) {
+    // 如果悬停到新的柱状图
+    if (this.hoveredBarIndex !== barIndex) {
+      // 恢复之前悬停的柱状图
+      this._resetHoverState();
+
+      // 设置新的悬停状态
+      this.hoveredBarIndex = barIndex;
+      this._applyHoverState(barIndex);
+
+      // 改变鼠标样式
+      this.domElement.style.cursor = 'pointer';
     }
   }
 
@@ -182,7 +212,7 @@ class InteractionManager {
 
   /**
    * 开始内层闪烁效果
-   * 由于使用 InstancedMesh，改用边框材质实现闪烁
+   * 由于边框已合并，改用 InstancedMesh 的颜色实现闪烁
    */
   _startLayerBlink() {
     if (this.selectedBarIndex === null || this.hoveredLayerIndex === null) return;
@@ -190,37 +220,45 @@ class InteractionManager {
     const bar = this.barCollectionManager.getBars()[this.selectedBarIndex];
     if (!bar) return;
 
-    const layerData = bar.innerLayers[this.hoveredLayerIndex];
-    if (!layerData || !layerData.edges) return;
+    const instanceId = bar.layerInstanceIds[this.hoveredLayerIndex];
+    const instancedMesh = this.barCollectionManager.getInnerLayerInstancedMesh();
+    if (!instancedMesh) return;
 
-    // 保存原始边框材质
-    layerData.originalEdgesMaterial = layerData.edges.material;
+    // 保存原始颜色
+    this.originalBlinkColor = new THREE.Color('#EDF2FA');
 
-    // 克隆边框材质用于闪烁
-    const blinkMaterial = layerData.edges.material.clone();
-    layerData.edges.material = blinkMaterial;
-
-    // 开始闪烁动画
+    // 开始闪烁动画（通过缩放内层实现）
     this.blinkState = false;
+    this.blinkInstanceId = instanceId;
     this.blinkInterval = setInterval(() => {
       this.blinkState = !this.blinkState;
-      if (layerData.edges && layerData.edges.material) {
-        if (this.blinkState) {
-          // 高亮状态 - 黄色
-          layerData.edges.material.color.setHex(0xffff00);
-          layerData.edges.scale.set(1.2, layerData.scaleY, 1.2);
-        } else {
-          // 恢复状态 - 白色
-          layerData.edges.material.color.setHex(0xffffff);
-          layerData.edges.scale.set(1, layerData.scaleY, 1);
-        }
+
+      const tempMatrix = new THREE.Matrix4();
+      const tempPosition = new THREE.Vector3();
+      const tempQuaternion = new THREE.Quaternion();
+      const tempScale = new THREE.Vector3();
+
+      instancedMesh.getMatrixAt(instanceId, tempMatrix);
+      tempMatrix.decompose(tempPosition, tempQuaternion, tempScale);
+
+      if (this.blinkState) {
+        // 高亮状态 - 放大
+        tempScale.x = 1.15;
+        tempScale.z = 1.15;
+      } else {
+        // 恢复状态
+        tempScale.x = 1;
+        tempScale.z = 1;
       }
+
+      tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+      instancedMesh.setMatrixAt(instanceId, tempMatrix);
+      instancedMesh.instanceMatrix.needsUpdate = true;
     }, 200);
   }
 
   /**
    * 停止内层闪烁效果
-   * 恢复边框原始材质
    */
   _stopLayerBlink() {
     if (this.blinkInterval) {
@@ -228,22 +266,27 @@ class InteractionManager {
       this.blinkInterval = null;
     }
 
-    // 恢复边框原始材质
-    if (this.selectedBarIndex !== null && this.hoveredLayerIndex !== null) {
-      const bar = this.barCollectionManager.getBars()[this.selectedBarIndex];
-      if (bar) {
-        const layerData = bar.innerLayers[this.hoveredLayerIndex];
-        if (layerData && layerData.edges && layerData.originalEdgesMaterial) {
-          // 销毁克隆的材质
-          if (layerData.edges.material !== layerData.originalEdgesMaterial) {
-            layerData.edges.material.dispose();
-          }
-          // 恢复原始材质
-          layerData.edges.material = layerData.originalEdgesMaterial;
-          layerData.edges.scale.set(1, layerData.scaleY, 1);
-          delete layerData.originalEdgesMaterial;
-        }
+    // 恢复内层缩放
+    if (this.blinkInstanceId !== undefined && this.blinkInstanceId !== null) {
+      const instancedMesh = this.barCollectionManager.getInnerLayerInstancedMesh();
+      if (instancedMesh) {
+        const tempMatrix = new THREE.Matrix4();
+        const tempPosition = new THREE.Vector3();
+        const tempQuaternion = new THREE.Quaternion();
+        const tempScale = new THREE.Vector3();
+
+        instancedMesh.getMatrixAt(this.blinkInstanceId, tempMatrix);
+        tempMatrix.decompose(tempPosition, tempQuaternion, tempScale);
+
+        // 恢复正常缩放
+        tempScale.x = 1;
+        tempScale.z = 1;
+
+        tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
+        instancedMesh.setMatrixAt(this.blinkInstanceId, tempMatrix);
+        instancedMesh.instanceMatrix.needsUpdate = true;
       }
+      this.blinkInstanceId = null;
     }
 
     this.blinkState = false;
@@ -375,14 +418,17 @@ class InteractionManager {
 
   /**
    * 应用悬停状态（缩放效果）
-   * 由于内层使用 InstancedMesh，需要更新矩阵来实现缩放
+   * 外壳和内层都使用 InstancedMesh，需要更新矩阵来实现缩放
    * @param {number} barIndex - 柱状图索引
    */
   _applyHoverState(barIndex) {
     const bar = this.barCollectionManager.getBars()[barIndex];
     if (!bar) return;
 
-    // 缩放外壳（X和Z方向）
+    // 缩放外壳（通过 InstancedMesh 矩阵）
+    this.barCollectionManager._updateOuterShellScale(barIndex, this.hoverScale, this.hoverScale);
+
+    // 更新代理对象的缩放状态（用于记录）
     if (bar.outerShell) {
       bar.outerShell.scale.x = this.hoverScale;
       bar.outerShell.scale.z = this.hoverScale;
@@ -390,14 +436,6 @@ class InteractionManager {
 
     // 缩放内层（通过 InstancedMesh 矩阵）
     this._updateBarInstanceScale(bar, this.hoverScale);
-
-    // 缩放边框
-    bar.innerLayers.forEach(layerData => {
-      if (layerData.edges) {
-        layerData.edges.scale.x = this.hoverScale;
-        layerData.edges.scale.z = this.hoverScale;
-      }
-    });
   }
 
   /**
@@ -409,7 +447,10 @@ class InteractionManager {
     const bar = this.barCollectionManager.getBars()[this.hoveredBarIndex];
     if (!bar) return;
 
-    // 恢复外壳缩放
+    // 恢复外壳缩放（通过 InstancedMesh 矩阵）
+    this.barCollectionManager._updateOuterShellScale(this.hoveredBarIndex, 1, 1);
+
+    // 更新代理对象的缩放状态
     if (bar.outerShell) {
       bar.outerShell.scale.x = 1;
       bar.outerShell.scale.z = 1;
@@ -417,14 +458,6 @@ class InteractionManager {
 
     // 恢复内层缩放（通过 InstancedMesh 矩阵）
     this._updateBarInstanceScale(bar, 1);
-
-    // 恢复边框缩放
-    bar.innerLayers.forEach(layerData => {
-      if (layerData.edges) {
-        layerData.edges.scale.x = 1;
-        layerData.edges.scale.z = 1;
-      }
-    });
   }
 
   /**
@@ -482,28 +515,31 @@ class InteractionManager {
 
   /**
    * 处理外层点击
+   * 使用 InstancedMesh 射线检测
    */
   _handleOuterShellClick() {
-    // 获取所有可拾取的外壳对象
-    const outerShells = this._getPickableOuterShells();
+    // 获取外壳 InstancedMesh
+    const outerShellInstancedMesh = this.barCollectionManager.getOuterShellInstancedMesh();
+    if (!outerShellInstancedMesh) return;
 
     // 进行射线检测
-    const intersects = this.raycaster.intersectObjects(outerShells);
+    const intersects = this.raycaster.intersectObject(outerShellInstancedMesh);
 
     if (intersects.length > 0) {
-      // 获取第一个相交的物体（最近的）
-      const intersected = intersects[0].object;
-      const barIndex = intersected.userData.barIndex;
+      const intersected = intersects[0];
+      const barIndex = intersected.instanceId;
+      const bar = this.barCollectionManager.getBars()[barIndex];
 
-      console.log('点击了柱状图:', {
-        barIndex: barIndex,
-        groupName: intersected.userData.groupName,
-        mesh: intersected,
-        bar: this.barCollectionManager.getBars()[barIndex]
-      });
+      if (bar) {
+        console.log('点击了柱状图:', {
+          barIndex: barIndex,
+          groupName: bar.groupName,
+          bar: bar
+        });
 
-      // 选中该柱状图
-      this._onBarSelected(barIndex);
+        // 选中该柱状图
+        this._onBarSelected(barIndex);
+      }
     }
   }
 
@@ -537,24 +573,31 @@ class InteractionManager {
       }
     }
 
-    // 检测是否点击了其他柱状图的外层
-    const outerShells = this._getPickableOuterShells();
-    const outerIntersects = this.raycaster.intersectObjects(outerShells);
+    // 检测是否点击了其他柱状图的外层（使用 InstancedMesh）
+    const outerShellInstancedMesh = this.barCollectionManager.getOuterShellInstancedMesh();
+    if (outerShellInstancedMesh) {
+      const outerIntersects = this.raycaster.intersectObject(outerShellInstancedMesh);
 
-    if (outerIntersects.length > 0) {
-      const intersected = outerIntersects[0].object;
-      const barIndex = intersected.userData.barIndex;
+      if (outerIntersects.length > 0) {
+        const intersected = outerIntersects[0];
+        const barIndex = intersected.instanceId;
 
-      console.log('点击了柱状图:', {
-        barIndex: barIndex,
-        groupName: intersected.userData.groupName,
-        mesh: intersected,
-        bar: this.barCollectionManager.getBars()[barIndex]
-      });
+        // 跳过当前选中的柱状图
+        if (barIndex !== this.selectedBarIndex) {
+          const clickedBar = this.barCollectionManager.getBars()[barIndex];
+          if (clickedBar) {
+            console.log('点击了柱状图:', {
+              barIndex: barIndex,
+              groupName: clickedBar.groupName,
+              bar: clickedBar
+            });
 
-      // 切换到新的柱状图
-      this._onBarSelected(barIndex);
-      return;
+            // 切换到新的柱状图
+            this._onBarSelected(barIndex);
+            return;
+          }
+        }
+      }
     }
 
     // 点击了空白区域，取消选中

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /**
  * 全局共享材质（性能优化：避免材质切换开销）
@@ -86,7 +87,7 @@ const GeometryCache = {
 
 /**
  * 柱状图管理类（轻量版 - 配合 InstancedMesh 使用）
- * 只管理外壳和数据映射，内层由 BarCollectionManager 的 InstancedMesh 统一管理
+ * 只管理数据，外壳和内层都由 BarCollectionManager 的 InstancedMesh 统一管理
  */
 class BarManager {
   /**
@@ -107,7 +108,11 @@ class BarManager {
     this.barIndex = barIndex;
     this.groupName = groupName;
 
+    // 外壳不再作为独立 Mesh，改为 InstancedMesh 的一部分
+    // 但保留 outerShell 引用用于交互（由 BarCollectionManager 设置）
     this.outerShell = null;
+    this.outerShellInstanceId = -1;  // 外壳在 InstancedMesh 中的 ID
+
     this.currentHeight = 0;
     this.layerGap = 0.2;
 
@@ -116,30 +121,7 @@ class BarManager {
     // 每层在 InstancedMesh 中的 instanceId（由 BarCollectionManager 设置）
     this.layerInstanceIds = [];
 
-    this.createBar();
-  }
-
-  /**
-   * 创建柱状图（只创建外壳）
-   */
-  createBar() {
-    // 创建外壳
-    const shellGeometry = GeometryCache.getOuterShellGeometry(this.barWidth, this.maxHeight);
-    this.outerShell = new THREE.Mesh(shellGeometry, SharedMaterials.outerShell);
-    this.outerShell.position.set(
-      this.position.x,
-      this.position.y + this.maxHeight / 2,
-      this.position.z
-    );
-    this.outerShell.userData = {
-      type: 'outerShell',
-      barIndex: this.barIndex,
-      groupName: this.groupName,
-      raycastEnabled: true
-    };
-    this.scene.add(this.outerShell);
-
-    // 初始化内层数据结构（不创建实际 Mesh）
+    // 初始化数据结构
     this.initLayerData();
   }
 
@@ -213,9 +195,6 @@ class BarManager {
   }
 
   dispose() {
-    if (this.outerShell) {
-      this.scene.remove(this.outerShell);
-    }
     this.innerLayers = [];
     this.layerInstanceIds = [];
   }
@@ -223,7 +202,7 @@ class BarManager {
 
 /**
  * 柱状图集合管理器
- * 使用 InstancedMesh 统一管理所有内层，大幅减少 Draw Call
+ * 使用 InstancedMesh 统一管理外壳和内层，合并边框几何体，大幅减少 Draw Call
  */
 class BarCollectionManager {
   constructor(scene) {
@@ -231,10 +210,16 @@ class BarCollectionManager {
     this.bars = [];
 
     // InstancedMesh 相关
-    this.innerLayerInstancedMesh = null;  // 内层 InstancedMesh
-    this.edgesInstancedMesh = null;        // 边框（暂不使用 InstancedMesh，LineSegments 不支持）
+    this.outerShellInstancedMesh = null;   // 外壳 InstancedMesh
+    this.innerLayerInstancedMesh = null;   // 内层 InstancedMesh
+    this.mergedEdgesMesh = null;           // 合并后的边框 Mesh
     this.totalLayerCount = 0;              // 总层数
     this.instanceIdToLayer = new Map();    // instanceId -> {barIndex, layerIndex}
+
+    // 存储配置参数
+    this.barWidth = 0;
+    this.maxHeight = 0;
+    this.defaultLayerCount = 0;
 
     // 用于更新矩阵的临时对象
     this.tempMatrix = new THREE.Matrix4();
@@ -247,6 +232,10 @@ class BarCollectionManager {
    * 创建多个柱状图
    */
   createBars(positions, barWidth = 2, maxHeight = 50, layerCounts = [], groupNames = []) {
+    this.barWidth = barWidth;
+    this.maxHeight = maxHeight;
+    this.defaultLayerCount = layerCounts[0] || 20;
+
     // 计算总层数
     this.totalLayerCount = 0;
     positions.forEach((_, index) => {
@@ -254,12 +243,15 @@ class BarCollectionManager {
       this.totalLayerCount += layerCount;
     });
 
-    // 创建 BarManager 实例（只创建外壳）
+    // 创建 BarManager 实例（纯数据）
     let instanceId = 0;
     positions.forEach((pos, index) => {
       const layerCount = layerCounts[index] || 20;
       const groupName = groupNames[index] || '';
       const bar = new BarManager(this.scene, pos, barWidth, maxHeight, layerCount, index, groupName);
+
+      // 设置外壳的 instanceId
+      bar.outerShellInstanceId = index;
 
       // 设置每层的 instanceId
       for (let i = 0; i < layerCount; i++) {
@@ -271,26 +263,73 @@ class BarCollectionManager {
       this.bars.push(bar);
     });
 
-    // 创建 InstancedMesh
-    this._createInstancedMesh(barWidth, maxHeight, layerCounts[0] || 20);
+    // 创建外壳 InstancedMesh
+    this._createOuterShellInstancedMesh(positions.length);
+
+    // 创建内层 InstancedMesh
+    this._createInnerLayerInstancedMesh();
+
+    // 创建合并边框
+    this._createMergedEdges();
 
     // 初始化所有实例的矩阵
     this._updateAllInstanceMatrices();
   }
 
   /**
-   * 创建 InstancedMesh
+   * 创建外壳 InstancedMesh
    */
-  _createInstancedMesh(barWidth, maxHeight, defaultLayerCount) {
-    const totalGap = 0.2 * (defaultLayerCount + 1);
-    const availableHeight = maxHeight - totalGap;
-    const layerBaseHeight = availableHeight / defaultLayerCount;
-    const innerWidth = barWidth * 0.9;
+  _createOuterShellInstancedMesh(count) {
+    const shellGeometry = GeometryCache.getOuterShellGeometry(this.barWidth, this.maxHeight);
 
-    // 获取几何体
+    this.outerShellInstancedMesh = new THREE.InstancedMesh(
+      shellGeometry,
+      SharedMaterials.outerShell,
+      count
+    );
+    this.outerShellInstancedMesh.userData = {
+      type: 'outerShellInstanced'
+    };
+    this.outerShellInstancedMesh.frustumCulled = false;
+
+    // 设置每个外壳的矩阵
+    this.bars.forEach((bar, index) => {
+      this.tempPosition.set(
+        bar.position.x,
+        bar.position.y + this.maxHeight / 2,
+        bar.position.z
+      );
+      this.tempScale.set(1, 1, 1);
+      this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+      this.outerShellInstancedMesh.setMatrixAt(index, this.tempMatrix);
+
+      // 创建一个代理对象用于交互识别
+      bar.outerShell = {
+        userData: {
+          type: 'outerShell',
+          barIndex: index,
+          groupName: bar.groupName,
+          raycastEnabled: true
+        },
+        scale: { x: 1, z: 1 }  // 用于悬停缩放状态
+      };
+    });
+
+    this.outerShellInstancedMesh.instanceMatrix.needsUpdate = true;
+    this.scene.add(this.outerShellInstancedMesh);
+  }
+
+  /**
+   * 创建内层 InstancedMesh
+   */
+  _createInnerLayerInstancedMesh() {
+    const totalGap = 0.2 * (this.defaultLayerCount + 1);
+    const availableHeight = this.maxHeight - totalGap;
+    const layerBaseHeight = availableHeight / this.defaultLayerCount;
+    const innerWidth = this.barWidth * 0.9;
+
     const layerGeometry = GeometryCache.getInnerLayerGeometry(innerWidth, layerBaseHeight);
 
-    // 创建内层 InstancedMesh
     this.innerLayerInstancedMesh = new THREE.InstancedMesh(
       layerGeometry,
       SharedMaterials.innerLayer,
@@ -299,38 +338,87 @@ class BarCollectionManager {
     this.innerLayerInstancedMesh.userData = {
       type: 'innerLayerInstanced'
     };
-    // 禁用视锥剔除，确保所有实例都被渲染
     this.innerLayerInstancedMesh.frustumCulled = false;
     this.scene.add(this.innerLayerInstancedMesh);
-
-    // 边框使用普通方式（LineSegments 不支持 InstancedMesh）
-    // 在 Step 4 中考虑其他优化方案
-    this._createEdges(barWidth, maxHeight, defaultLayerCount);
   }
 
   /**
-   * 创建边框（暂时使用传统方式）
+   * 创建合并边框（所有边框合并为一个 LineSegments）
    */
-  _createEdges(barWidth, maxHeight, defaultLayerCount) {
-    const totalGap = 0.2 * (defaultLayerCount + 1);
-    const availableHeight = maxHeight - totalGap;
-    const layerBaseHeight = availableHeight / defaultLayerCount;
-    const innerWidth = barWidth * 0.9;
+  _createMergedEdges() {
+    const totalGap = 0.2 * (this.defaultLayerCount + 1);
+    const availableHeight = this.maxHeight - totalGap;
+    const layerBaseHeight = availableHeight / this.defaultLayerCount;
+    const innerWidth = this.barWidth * 0.9;
 
     const edgesGeometry = GeometryCache.getEdgesGeometry(innerWidth, layerBaseHeight);
 
-    // 为每个实例创建边框
+    // 收集所有边框几何体
+    const edgesGeometries = [];
     this.bars.forEach(bar => {
-      bar.innerLayers.forEach((layerData, i) => {
-        const edges = new THREE.LineSegments(edgesGeometry, SharedMaterials.edges);
-        edges.position.set(bar.position.x, layerData.positionY, bar.position.z);
-        edges.scale.y = layerData.scaleY;
-        this.scene.add(edges);
-
-        // 存储边框引用到 layerData
-        layerData.edges = edges;
+      bar.innerLayers.forEach((layerData) => {
+        // 克隆并变换几何体
+        const clonedGeom = edgesGeometry.clone();
+        const matrix = new THREE.Matrix4();
+        matrix.makeTranslation(bar.position.x, layerData.positionY, bar.position.z);
+        const scaleMatrix = new THREE.Matrix4();
+        scaleMatrix.makeScale(1, layerData.scaleY, 1);
+        matrix.multiply(scaleMatrix);
+        clonedGeom.applyMatrix4(matrix);
+        edgesGeometries.push(clonedGeom);
       });
     });
+
+    // 合并所有边框几何体
+    const mergedGeometry = mergeGeometries(edgesGeometries, false);
+    this.mergedEdgesMesh = new THREE.LineSegments(mergedGeometry, SharedMaterials.edges);
+    this.mergedEdgesMesh.frustumCulled = false;
+    this.scene.add(this.mergedEdgesMesh);
+
+    // 清理临时几何体
+    edgesGeometries.forEach(geom => geom.dispose());
+  }
+
+  /**
+   * 重新生成合并边框（数据更新后调用）
+   */
+  _updateMergedEdges() {
+    // 移除旧的边框
+    if (this.mergedEdgesMesh) {
+      this.scene.remove(this.mergedEdgesMesh);
+      this.mergedEdgesMesh.geometry.dispose();
+    }
+
+    const totalGap = 0.2 * (this.defaultLayerCount + 1);
+    const availableHeight = this.maxHeight - totalGap;
+    const layerBaseHeight = availableHeight / this.defaultLayerCount;
+    const innerWidth = this.barWidth * 0.9;
+
+    const edgesGeometry = GeometryCache.getEdgesGeometry(innerWidth, layerBaseHeight);
+
+    // 收集所有边框几何体
+    const edgesGeometries = [];
+    this.bars.forEach(bar => {
+      bar.innerLayers.forEach((layerData) => {
+        const clonedGeom = edgesGeometry.clone();
+        const matrix = new THREE.Matrix4();
+        matrix.makeTranslation(bar.position.x, layerData.positionY, bar.position.z);
+        const scaleMatrix = new THREE.Matrix4();
+        scaleMatrix.makeScale(1, layerData.scaleY, 1);
+        matrix.multiply(scaleMatrix);
+        clonedGeom.applyMatrix4(matrix);
+        edgesGeometries.push(clonedGeom);
+      });
+    });
+
+    // 合并所有边框几何体
+    const mergedGeometry = mergeGeometries(edgesGeometries, false);
+    this.mergedEdgesMesh = new THREE.LineSegments(mergedGeometry, SharedMaterials.edges);
+    this.mergedEdgesMesh.frustumCulled = false;
+    this.scene.add(this.mergedEdgesMesh);
+
+    // 清理临时几何体
+    edgesGeometries.forEach(geom => geom.dispose());
   }
 
   /**
@@ -344,7 +432,6 @@ class BarCollectionManager {
       });
     });
     this.innerLayerInstancedMesh.instanceMatrix.needsUpdate = true;
-    // 更新边界球体，用于射线检测
     this.innerLayerInstancedMesh.computeBoundingSphere();
   }
 
@@ -359,6 +446,24 @@ class BarCollectionManager {
   }
 
   /**
+   * 更新外壳实例的缩放
+   */
+  _updateOuterShellScale(barIndex, scaleX, scaleZ) {
+    const bar = this.bars[barIndex];
+    if (!bar) return;
+
+    this.tempPosition.set(
+      bar.position.x,
+      bar.position.y + this.maxHeight / 2,
+      bar.position.z
+    );
+    this.tempScale.set(scaleX, 1, scaleZ);
+    this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+    this.outerShellInstancedMesh.setMatrixAt(barIndex, this.tempMatrix);
+    this.outerShellInstancedMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
    * 更新所有柱状图的高度
    */
   updateAllHeights(values) {
@@ -367,22 +472,18 @@ class BarCollectionManager {
         const bar = this.bars[index];
         bar.updateHeight(value);
 
-        // 更新对应实例的矩阵和边框
+        // 更新对应实例的矩阵
         bar.innerLayers.forEach((layerData, i) => {
           const instanceId = bar.layerInstanceIds[i];
           this._updateInstanceMatrix(instanceId, bar.position, layerData);
-
-          // 更新边框
-          if (layerData.edges) {
-            layerData.edges.position.y = layerData.positionY;
-            layerData.edges.scale.y = layerData.scaleY;
-          }
         });
       }
     });
     this.innerLayerInstancedMesh.instanceMatrix.needsUpdate = true;
-    // 更新边界球体，用于射线检测
     this.innerLayerInstancedMesh.computeBoundingSphere();
+
+    // 重新生成合并边框
+    this._updateMergedEdges();
   }
 
   /**
@@ -393,7 +494,14 @@ class BarCollectionManager {
   }
 
   /**
-   * 获取 InstancedMesh（用于射线检测）
+   * 获取外壳 InstancedMesh（用于射线检测）
+   */
+  getOuterShellInstancedMesh() {
+    return this.outerShellInstancedMesh;
+  }
+
+  /**
+   * 获取内层 InstancedMesh（用于射线检测）
    */
   getInnerLayerInstancedMesh() {
     return this.innerLayerInstancedMesh;
@@ -404,22 +512,25 @@ class BarCollectionManager {
   }
 
   dispose() {
-    // 销毁 InstancedMesh
+    // 销毁外壳 InstancedMesh
+    if (this.outerShellInstancedMesh) {
+      this.scene.remove(this.outerShellInstancedMesh);
+      this.outerShellInstancedMesh.dispose();
+    }
+
+    // 销毁内层 InstancedMesh
     if (this.innerLayerInstancedMesh) {
       this.scene.remove(this.innerLayerInstancedMesh);
       this.innerLayerInstancedMesh.dispose();
     }
 
-    // 销毁边框
-    this.bars.forEach(bar => {
-      bar.innerLayers.forEach(layerData => {
-        if (layerData.edges) {
-          this.scene.remove(layerData.edges);
-        }
-      });
-    });
+    // 销毁合并边框
+    if (this.mergedEdgesMesh) {
+      this.scene.remove(this.mergedEdgesMesh);
+      this.mergedEdgesMesh.geometry.dispose();
+    }
 
-    // 销毁柱状图
+    // 销毁柱状图数据
     this.bars.forEach(bar => bar.dispose());
     this.bars = [];
     this.instanceIdToLayer.clear();
