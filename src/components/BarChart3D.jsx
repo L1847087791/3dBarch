@@ -14,36 +14,55 @@ function generateSceneData() {
   const bars = [];
   const spacing = 20;
 
-  // 第一堆：60个 (6x10) - 左前方 - 每个柱状图50层
+  // 定义颜色列表用于演示
+  const innerColors = ['normal', 'info', 'warning', 'error', 'critical'];
+  const outerColors = ['normal', 'active', 'warning', 'error', 'offline', 'maintenance'];
+
+  // 第一堆：60个 (6x10) - 左前方 - 每个柱状图递增层数
   const group1Rows = 10;
   const group1Cols = 6;
   const group1StartX = -100;
   const group1StartZ = -200;
-  const group1LayerCount = 50;
+  let group1LayerCount = 1;
   for (let row = 0; row < group1Rows; row++) {
     for (let col = 0; col < group1Cols; col++) {
+      const layerCount = group1LayerCount++;
+      // 为每层随机分配颜色
+      const layers = Array.from({ length: layerCount }, (_, i) => ({
+        color: innerColors[i % innerColors.length]
+      }));
       bars.push({
         position: { x: group1StartX + col * spacing, y: 0, z: group1StartZ + row * spacing },
         groupName: '数据集 A',
-        height: 40,  // 外层目标高度
-        layers: Array.from({ length: group1LayerCount }, () => ({}))
+        height: 40,
+        outerColor: 'normal',  // 外层颜色
+        layers
       });
     }
   }
 
-  // 第二堆：60个 (6x10) - 右前方 - 每个柱状图50层
+  // 第二堆：60个 (6x10) - 右前方 - 每个柱状图递增层数
   const group2Rows = 10;
   const group2Cols = 6;
   const group2StartX = 100;
   const group2StartZ = -100;
-  const group2LayerCount = 50;
+  let group2LayerCount = 1;
   for (let row = 0; row < group2Rows; row++) {
     for (let col = 0; col < group2Cols; col++) {
+     if( group2LayerCount<=80){
+       group2LayerCount +=2
+     }
+      const layerCount = group2LayerCount;
+      // 根据层索引设置不同颜色（模拟告警级别）
+      const layers = Array.from({ length: layerCount }, (_, i) => ({
+        color: innerColors[i % innerColors.length]
+      }));
       bars.push({
         position: { x: group2StartX + col * spacing, y: 0, z: group2StartZ + row * spacing },
         groupName: '数据集 B',
-        height: 40,  // 外层目标高度
-        layers: Array.from({ length: group2LayerCount }, () => ({}))
+        height: 40,
+        outerColor:'normal',  
+        layers
       });
     }
   }
@@ -56,11 +75,16 @@ function generateSceneData() {
   const group3LayerCount = 50;
   for (let row = 0; row < group3Rows; row++) {
     for (let col = 0; col < group3Cols; col++) {
+      // 创建渐变颜色效果
+      const layers = Array.from({ length: group3LayerCount }, (_, i) => ({
+         color: innerColors[i % innerColors.length]
+      }));
       bars.push({
         position: { x: group3StartX + col * spacing, y: 0, z: group3StartZ + row * spacing },
         groupName: '数据集 C',
-        height: 40,  // 外层目标高度
-        layers: Array.from({ length: group3LayerCount }, () => ({}))
+        height: 40,
+        outerColor: 'normal',  
+        layers
       });
     }
   }

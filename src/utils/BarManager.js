@@ -2,19 +2,42 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /**
+ * 颜色映射表（告警级别）
+ */
+const ColorMap = {
+  // 内层颜色（告警级别）
+  inner: {
+    normal: '#EDF2FA',    // 正常 - 白色
+    info: '#4A90D9',      // 信息 - 蓝色
+    warning: '#F5A623',   // 警告 - 黄色
+    error: '#D0021B',     // 错误 - 红色
+    critical: '#8B0000',  // 严重 - 深红色
+  },
+  // 外层颜色（系统状态）
+  outer: {
+    normal: '#EDF2FA',    // 正常
+    active: '#4A90D9',    // 活跃
+    warning: '#F5A623',   // 警告
+    error: '#D0021B',     // 错误
+    offline: '#808080',   // 离线
+    maintenance: '#9B59B6' // 维护
+  }
+};
+
+/**
  * 全局共享材质（性能优化：避免材质切换开销）
  */
 const SharedMaterials = {
-  // 外壳材质（透明）
+  // 外壳材质（透明）- 启用顶点颜色支持实例颜色
   outerShell: new THREE.MeshBasicMaterial({
-    color: '#EDF2FA',
+    color: 0xffffff,  // 使用白色作为基础色，让实例颜色生效
     transparent: true,
     opacity: 0.2,
   }),
-  // 内层材质（Phong光照）- 用于 InstancedMesh
+  // 内层材质（Phong光照）- 启用顶点颜色支持实例颜色
   innerLayer: new THREE.MeshPhongMaterial({
-    color: '#EDF2FA',
-    emissive: 0xaaaaaa,
+    color: 0xffffff,  // 使用白色作为基础色，让实例颜色生效
+    emissive: 0x888888,
     emissiveIntensity: 0.3,
     shininess: 50
   }),
@@ -95,21 +118,24 @@ class BarManager {
    * @param {Object} position - 位置 {x, y, z}
    * @param {number} barWidth - 柱状图宽度
    * @param {number} initHeight - 初始高度（用于共享几何体）
-   * @param {number} layerCount - 分层数量
+   * @param {Array} layersData - 层数据数组 [{ color: 'normal' }, ...]
    * @param {number} barIndex - 柱状图在集合中的索引（用于交互识别）
    * @param {string} groupName - 所属堆的名称（如 '数据集 A'）
    * @param {number} baseLayerHeight - 统一的基准层高（由 BarCollectionManager 传入）
+   * @param {string} outerColor - 外层颜色标识（如 'normal', 'warning'）
    */
-  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, initHeight = 5, layerCount = 20, barIndex = 0, groupName = '', baseLayerHeight = 0.088) {
+  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, initHeight = 5, layersData = [], barIndex = 0, groupName = '', baseLayerHeight = 0.088, outerColor = 'normal') {
     this.scene = scene;
     this.position = position;
     this.barWidth = barWidth;
     this.initHeight = initHeight;  // 初始高度（几何体基准）
     this.currentHeight = initHeight;  // 当前外层高度
-    this.layerCount = layerCount;
+    this.layersData = layersData;  // 层数据（包含颜色等信息）
+    this.layerCount = layersData.length || 0;
     this.barIndex = barIndex;
     this.groupName = groupName;
     this.baseLayerHeight = baseLayerHeight;  // 统一的基准层高（几何体尺寸）
+    this.outerColor = outerColor;  // 外层颜色标识
 
     // 外壳不再作为独立 Mesh，改为 InstancedMesh 的一部分
     // 但保留 outerShell 引用用于交互（由 BarCollectionManager 设置）
@@ -143,13 +169,16 @@ class BarManager {
     this.innerLayers = [];
     let currentY = this.position.y + this.layerGap;
     for (let i = 0; i < this.layerCount; i++) {
+      // 获取该层的颜色配置，默认为 'normal'
+      const layerColorKey = this.layersData[i]?.color || 'normal';
       this.innerLayers.push({
         layerIndex: i,
         barIndex: this.barIndex,
         groupName: this.groupName,
         baseHeight: this.baseLayerHeight,  // 统一的基准层高
         scaleY: scaleY,  // 根据实际层数计算的 scaleY
-        positionY: currentY + actualLayerHeight / 2
+        positionY: currentY + actualLayerHeight / 2,
+        color: layerColorKey  // 颜色标识
       });
       currentY += actualLayerHeight + this.layerGap;
     }
@@ -232,6 +261,7 @@ class BarCollectionManager {
     this.tempPosition = new THREE.Vector3();
     this.tempQuaternion = new THREE.Quaternion();
     this.tempScale = new THREE.Vector3();
+    this.tempColor = new THREE.Color();  // 用于设置实例颜色
   }
 
   /**
@@ -259,16 +289,18 @@ class BarCollectionManager {
     // 创建 BarManager 实例（纯数据）
     let instanceId = 0;
     barsData.forEach((barData, index) => {
-      const layerCount = barData.layers?.length || 0;
+      const layersData = barData.layers || [];
+      const layerCount = layersData.length;
       const bar = new BarManager(
         this.scene,
         barData.position,
         barWidth,
         initHeight,
-        layerCount,
+        layersData,  // 传递层数据数组
         index,
         barData.groupName || '',
-        this.baseLayerHeight  // 传入统一的基准层高
+        this.baseLayerHeight,  // 传入统一的基准层高
+        barData.outerColor || 'normal'  // 传入外层颜色
       );
 
       // 设置外壳的 instanceId
@@ -295,6 +327,9 @@ class BarCollectionManager {
 
     // 使用 sceneData 中的 height 更新到目标高度
     this._initializeHeights(barsData);
+
+    // 初始化所有实例的颜色
+    this._initializeColors();
 
     // 创建合并边框（需要在高度初始化之后）
     this._createMergedEdges();
@@ -477,6 +512,30 @@ class BarCollectionManager {
   }
 
   /**
+   * 初始化所有实例的颜色
+   */
+  _initializeColors() {
+    // 设置外壳颜色
+    this.bars.forEach((bar, barIndex) => {
+      const outerColorHex = ColorMap.outer[bar.outerColor] || ColorMap.outer.normal;
+      this.tempColor.set(outerColorHex);
+      this.outerShellInstancedMesh.setColorAt(barIndex, this.tempColor);
+    });
+    this.outerShellInstancedMesh.instanceColor.needsUpdate = true;
+
+    // 设置内层颜色
+    this.bars.forEach(bar => {
+      bar.innerLayers.forEach((layerData, i) => {
+        const instanceId = bar.layerInstanceIds[i];
+        const innerColorHex = ColorMap.inner[layerData.color] || ColorMap.inner.normal;
+        this.tempColor.set(innerColorHex);
+        this.innerLayerInstancedMesh.setColorAt(instanceId, this.tempColor);
+      });
+    });
+    this.innerLayerInstancedMesh.instanceColor.needsUpdate = true;
+  }
+
+  /**
    * 更新外壳实例的矩阵（支持高度缩放）
    */
   _updateOuterShellMatrix(barIndex, scaleY) {
@@ -560,6 +619,81 @@ class BarCollectionManager {
   }
 
   /**
+   * 更新单个内层的颜色
+   * @param {number} barIndex - 柱状图索引
+   * @param {number} layerIndex - 层索引
+   * @param {string} colorKey - 颜色标识（如 'normal', 'warning', 'error'）
+   */
+  setInnerLayerColor(barIndex, layerIndex, colorKey) {
+    const bar = this.bars[barIndex];
+    if (!bar || !bar.innerLayers[layerIndex]) return;
+
+    const instanceId = bar.layerInstanceIds[layerIndex];
+    const colorHex = ColorMap.inner[colorKey] || ColorMap.inner.normal;
+    this.tempColor.set(colorHex);
+    this.innerLayerInstancedMesh.setColorAt(instanceId, this.tempColor);
+    this.innerLayerInstancedMesh.instanceColor.needsUpdate = true;
+
+    // 更新数据
+    bar.innerLayers[layerIndex].color = colorKey;
+  }
+
+  /**
+   * 更新外壳颜色
+   * @param {number} barIndex - 柱状图索引
+   * @param {string} colorKey - 颜色标识（如 'normal', 'warning', 'error'）
+   */
+  setOuterShellColor(barIndex, colorKey) {
+    const bar = this.bars[barIndex];
+    if (!bar) return;
+
+    const colorHex = ColorMap.outer[colorKey] || ColorMap.outer.normal;
+    this.tempColor.set(colorHex);
+    this.outerShellInstancedMesh.setColorAt(barIndex, this.tempColor);
+    this.outerShellInstancedMesh.instanceColor.needsUpdate = true;
+
+    // 更新数据
+    bar.outerColor = colorKey;
+  }
+
+  /**
+   * 批量更新柱状图的颜色
+   * @param {Array} colorUpdates - 颜色更新数组 [{ barIndex, outerColor?, layers?: [{ layerIndex, color }] }]
+   */
+  updateColors(colorUpdates) {
+    colorUpdates.forEach(update => {
+      const { barIndex, outerColor, layers } = update;
+      const bar = this.bars[barIndex];
+      if (!bar) return;
+
+      // 更新外壳颜色
+      if (outerColor) {
+        const outerColorHex = ColorMap.outer[outerColor] || ColorMap.outer.normal;
+        this.tempColor.set(outerColorHex);
+        this.outerShellInstancedMesh.setColorAt(barIndex, this.tempColor);
+        bar.outerColor = outerColor;
+      }
+
+      // 更新内层颜色
+      if (layers && Array.isArray(layers)) {
+        layers.forEach(layerUpdate => {
+          const { layerIndex, color } = layerUpdate;
+          if (bar.innerLayers[layerIndex]) {
+            const instanceId = bar.layerInstanceIds[layerIndex];
+            const innerColorHex = ColorMap.inner[color] || ColorMap.inner.normal;
+            this.tempColor.set(innerColorHex);
+            this.innerLayerInstancedMesh.setColorAt(instanceId, this.tempColor);
+            bar.innerLayers[layerIndex].color = color;
+          }
+        });
+      }
+    });
+
+    this.outerShellInstancedMesh.instanceColor.needsUpdate = true;
+    this.innerLayerInstancedMesh.instanceColor.needsUpdate = true;
+  }
+
+  /**
    * 根据 instanceId 获取层信息
    */
   getLayerByInstanceId(instanceId) {
@@ -610,4 +744,4 @@ class BarCollectionManager {
   }
 }
 
-export { BarManager, BarCollectionManager, SharedMaterials, GeometryCache };
+export { BarManager, BarCollectionManager, SharedMaterials, GeometryCache, ColorMap };
