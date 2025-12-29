@@ -234,19 +234,19 @@ class BarCollectionManager {
   createBars(positions, barWidth = 2, maxHeight = 50, layerCounts = [], groupNames = []) {
     this.barWidth = barWidth;
     this.maxHeight = maxHeight;
-    this.defaultLayerCount = layerCounts[0] || 20;
+    this.defaultLayerCount = layerCounts[0] || 0;
 
     // 计算总层数
     this.totalLayerCount = 0;
     positions.forEach((_, index) => {
-      const layerCount = layerCounts[index] || 20;
+      const layerCount = layerCounts[index] || 0;
       this.totalLayerCount += layerCount;
     });
 
     // 创建 BarManager 实例（纯数据）
     let instanceId = 0;
     positions.forEach((pos, index) => {
-      const layerCount = layerCounts[index] || 20;
+      const layerCount = layerCounts[index] || 0;
       const groupName = groupNames[index] || '';
       const bar = new BarManager(this.scene, pos, barWidth, maxHeight, layerCount, index, groupName);
 

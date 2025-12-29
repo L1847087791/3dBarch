@@ -113,14 +113,14 @@ class InteractionManager {
       const bar = this.barCollectionManager.getBars()[barIndex];
       if (!bar || bar.outerShell.userData.raycastEnabled === false) {
         // 如果当前悬停的柱状图不可拾取，尝试检测下一个
-        if (intersects.length > 1) {
-          const nextBarIndex = intersects[1].instanceId;
-          const nextBar = this.barCollectionManager.getBars()[nextBarIndex];
-          if (nextBar && nextBar.outerShell.userData.raycastEnabled !== false) {
-            this._processOuterShellHover(nextBarIndex);
-            return;
-          }
-        }
+        // if (intersects.length > 1) {
+        //   const nextBarIndex = intersects[1].instanceId;
+        //   const nextBar = this.barCollectionManager.getBars()[nextBarIndex];
+        //   if (nextBar && nextBar.outerShell.userData.raycastEnabled !== false) {
+        //     this._processOuterShellHover(nextBarIndex);
+        //     return;
+        //   }
+        // }
         // 没有可拾取的柱状图
         if (this.hoveredBarIndex !== null && this.hoveredBarIndex !== this.selectedBarIndex) {
           this._resetHoverState();

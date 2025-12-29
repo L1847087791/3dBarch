@@ -7,7 +7,7 @@ import InteractionManager from '../utils/InteractionManager';
 
 /**
  * 生成柱状图位置
- * 3堆柱状图：30 + 120 + 20，矩形排列
+ * 3堆柱状图
  * 采用三角形分布，充分利用X-Z平面空间
  * @returns {Object} positions - 位置数组和层数配置
  */
