@@ -6,72 +6,66 @@ import GroupIndicatorManager from '../utils/GroupIndicatorManager';
 import InteractionManager from '../utils/InteractionManager';
 
 /**
- * 生成柱状图位置
- * 3堆柱状图
- * 采用三角形分布，充分利用X-Z平面空间
- * @returns {Object} positions - 位置数组和层数配置
+ * 生成场景数据（模拟后端返回）
+ * 统一的数据接口格式，包含位置、分组、高度、层数据
+ * @returns {Object} sceneData - 场景数据
  */
-function generateBarPositions() {
-  const positions = [];
-  const layerCounts = []; // 存储每个柱状图的层数
-  const groupNames = [];  // 存储每个柱状图所属堆名称
-  const spacing = 20; // 柱状图之间的间距
+function generateSceneData() {
+  const bars = [];
+  const spacing = 20;
 
   // 第一堆：60个 (6x10) - 左前方 - 每个柱状图50层
   const group1Rows = 10;
   const group1Cols = 6;
-  const group1StartX = -100; // 左侧
-  const group1StartZ = -200; // 前方
-  const group1LayerCount = 50; // A堆每个柱状图50层
+  const group1StartX = -100;
+  const group1StartZ = -200;
+  const group1LayerCount = 50;
   for (let row = 0; row < group1Rows; row++) {
     for (let col = 0; col < group1Cols; col++) {
-      positions.push({
-        x: group1StartX + col * spacing,
-        y: 0,
-        z: group1StartZ + row * spacing
+      bars.push({
+        position: { x: group1StartX + col * spacing, y: 0, z: group1StartZ + row * spacing },
+        groupName: '数据集 A',
+        height: 40,  // 外层目标高度
+        layers: Array.from({ length: group1LayerCount }, () => ({}))
       });
-      layerCounts.push(group1LayerCount);
-      groupNames.push('数据集 A');
     }
   }
 
   // 第二堆：60个 (6x10) - 右前方 - 每个柱状图50层
   const group2Rows = 10;
   const group2Cols = 6;
-  const group2StartX = 100; // 右侧
-  const group2StartZ = -100; // 前方
-  const group2LayerCount = 50; // B堆每个柱状图50层
+  const group2StartX = 100;
+  const group2StartZ = -100;
+  const group2LayerCount = 50;
   for (let row = 0; row < group2Rows; row++) {
     for (let col = 0; col < group2Cols; col++) {
-      positions.push({
-        x: group2StartX + col * spacing,
-        y: 0,
-        z: group2StartZ + row * spacing
+      bars.push({
+        position: { x: group2StartX + col * spacing, y: 0, z: group2StartZ + row * spacing },
+        groupName: '数据集 B',
+        height: 40,  // 外层目标高度
+        layers: Array.from({ length: group2LayerCount }, () => ({}))
       });
-      layerCounts.push(group2LayerCount);
-      groupNames.push('数据集 B');
     }
   }
 
-  // 第三堆：40个 (5x8) - 后中方 - 每个柱状图10层
+  // 第三堆：40个 (5x8) - 后中方 - 每个柱状图50层
   const group3Rows = 8;
   const group3Cols = 5;
-  const group3StartX = -50; // 中间偏左
-  const group3StartZ = 100; // 后方
-  const group3LayerCount = 50; // C堆每个柱状图50层
+  const group3StartX = -50;
+  const group3StartZ = 100;
+  const group3LayerCount = 50;
   for (let row = 0; row < group3Rows; row++) {
     for (let col = 0; col < group3Cols; col++) {
-      positions.push({
-        x: group3StartX + col * spacing,
-        y: 0,
-        z: group3StartZ + row * spacing
+      bars.push({
+        position: { x: group3StartX + col * spacing, y: 0, z: group3StartZ + row * spacing },
+        groupName: '数据集 C',
+        height: 40,  // 外层目标高度
+        layers: Array.from({ length: group3LayerCount }, () => ({}))
       });
-      layerCounts.push(group3LayerCount);
-      groupNames.push('数据集 C');
     }
   }
 
-  return { positions, layerCounts, groupNames };
+  return { bars };
 }
 
 /**
@@ -134,10 +128,11 @@ const BarChart3D = () => {
 
     // 创建柱状图管理器
     barManagerRef.current = new BarCollectionManager(scene);
-    const { positions, layerCounts, groupNames } = generateBarPositions();
-    barManagerRef.current.createBars(positions, 8, 40, layerCounts, groupNames);
+    const sceneData = generateSceneData();
+    // barWidth=8, initHeight=5（初始高度，用于共享几何体）
+    barManagerRef.current.createBars(sceneData, 8, 5);
 
-    console.log('已创建 160 个柱状图，层数分配：A堆60层、B堆60层、C堆40层');
+    console.log(`已创建 ${sceneData.bars.length} 个柱状图`);
     // console.log(barManagerRef.current.getBars())
 
     // 创建堆指示器（边框和标签）
@@ -145,17 +140,7 @@ const BarChart3D = () => {
     // const groupsInfo = generateGroupIndicatorInfo();
     // groupIndicatorRef.current.createAllIndicators(groupsInfo);
 
-    console.log('已创建堆指示器（边框和标签）');
-
-    // 初始化默认分层数据 - 使用 updateAllHeights 批量更新以同步 InstancedMesh
-    const bars = barManagerRef.current.getBars();
-    const allLayerData = bars.map((bar) => {
-      // 为每层设置满高度数据值（100），使每层显示为完整高度
-      return Array.from({ length: bar.layerCount }, () => 100);
-    });
-    barManagerRef.current.updateAllHeights(allLayerData);
-
-    console.log('已初始化默认分层数据');
+    // console.log('已创建堆指示器（边框和标签）');
 
     // 设置相机控制
     controlsRef.current = new CameraControls(

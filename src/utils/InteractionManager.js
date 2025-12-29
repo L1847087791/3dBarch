@@ -221,11 +221,15 @@ class InteractionManager {
     if (!bar) return;
 
     const instanceId = bar.layerInstanceIds[this.hoveredLayerIndex];
+    const layerData = bar.innerLayers[this.hoveredLayerIndex];
     const instancedMesh = this.barCollectionManager.getInnerLayerInstancedMesh();
-    if (!instancedMesh) return;
+    if (!instancedMesh || !layerData) return;
 
     // 保存原始颜色
     this.originalBlinkColor = new THREE.Color('#EDF2FA');
+
+    // 保存 layerData 用于恢复正确的 scaleY
+    this.blinkLayerData = layerData;
 
     // 开始闪烁动画（通过缩放内层实现）
     this.blinkState = false;
@@ -244,10 +248,12 @@ class InteractionManager {
       if (this.blinkState) {
         // 高亮状态 - 放大
         tempScale.x = 1.15;
+        tempScale.y = layerData.scaleY;  // 保持正确的 Y 缩放
         tempScale.z = 1.15;
       } else {
         // 恢复状态
         tempScale.x = 1;
+        tempScale.y = layerData.scaleY;  // 保持正确的 Y 缩放
         tempScale.z = 1;
       }
 
@@ -269,7 +275,7 @@ class InteractionManager {
     // 恢复内层缩放
     if (this.blinkInstanceId !== undefined && this.blinkInstanceId !== null) {
       const instancedMesh = this.barCollectionManager.getInnerLayerInstancedMesh();
-      if (instancedMesh) {
+      if (instancedMesh && this.blinkLayerData) {
         const tempMatrix = new THREE.Matrix4();
         const tempPosition = new THREE.Vector3();
         const tempQuaternion = new THREE.Quaternion();
@@ -278,8 +284,9 @@ class InteractionManager {
         instancedMesh.getMatrixAt(this.blinkInstanceId, tempMatrix);
         tempMatrix.decompose(tempPosition, tempQuaternion, tempScale);
 
-        // 恢复正常缩放
+        // 恢复正常缩放，使用保存的 scaleY
         tempScale.x = 1;
+        tempScale.y = this.blinkLayerData.scaleY;
         tempScale.z = 1;
 
         tempMatrix.compose(tempPosition, tempQuaternion, tempScale);
@@ -287,6 +294,7 @@ class InteractionManager {
         instancedMesh.instanceMatrix.needsUpdate = true;
       }
       this.blinkInstanceId = null;
+      this.blinkLayerData = null;
     }
 
     this.blinkState = false;
@@ -381,8 +389,8 @@ class InteractionManager {
     if (!bar) return;
 
     // 计算柱状图顶部的Y坐标
-    // 外壳底部Y坐标 + 外壳高度 = 顶部Y坐标
-    const shellTopY = bar.position.y + bar.maxHeight;
+    // 外壳底部Y坐标 + 当前外壳高度 = 顶部Y坐标
+    const shellTopY = bar.position.y + bar.currentHeight;
 
     // 光标位置：柱状图顶部 + 偏移量
     const cursorY = shellTopY + this.cursorOffset;
@@ -481,8 +489,9 @@ class InteractionManager {
       instancedMesh.getMatrixAt(instanceId, tempMatrix);
       tempMatrix.decompose(tempPosition, tempQuaternion, tempScale);
 
-      // 更新 X/Z 缩放
+      // 更新 X/Z 缩放，使用 layerData.scaleY 确保 Y 轴缩放正确
       tempScale.x = scale;
+      tempScale.y = layerData.scaleY;  // 使用数据中的 scaleY，避免累积误差
       tempScale.z = scale;
 
       // 重新组合矩阵

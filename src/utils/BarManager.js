@@ -94,16 +94,17 @@ class BarManager {
    * @param {THREE.Scene} scene - Three.js 场景
    * @param {Object} position - 位置 {x, y, z}
    * @param {number} barWidth - 柱状图宽度
-   * @param {number} maxHeight - 最大高度
+   * @param {number} initHeight - 初始高度（用于共享几何体）
    * @param {number} layerCount - 分层数量
    * @param {number} barIndex - 柱状图在集合中的索引（用于交互识别）
    * @param {string} groupName - 所属堆的名称（如 '数据集 A'）
    */
-  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, maxHeight = 50, layerCount = 20, barIndex = 0, groupName = '') {
+  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, initHeight = 5, layerCount = 20, barIndex = 0, groupName = '') {
     this.scene = scene;
     this.position = position;
     this.barWidth = barWidth;
-    this.maxHeight = maxHeight;
+    this.initHeight = initHeight;  // 初始高度（几何体基准）
+    this.currentHeight = initHeight;  // 当前外层高度
     this.layerCount = layerCount;
     this.barIndex = barIndex;
     this.groupName = groupName;
@@ -113,81 +114,80 @@ class BarManager {
     this.outerShell = null;
     this.outerShellInstanceId = -1;  // 外壳在 InstancedMesh 中的 ID
 
-    this.currentHeight = 0;
-    this.layerGap = 0.2;
+    this.layerGap = 0.2;  // 固定间隙
 
     // 内层数据（用于交互和更新，不再存储 Mesh 引用）
     this.innerLayers = [];
     // 每层在 InstancedMesh 中的 instanceId（由 BarCollectionManager 设置）
     this.layerInstanceIds = [];
 
-    // 初始化数据结构
+    // 初始化数据结构（基于 initHeight）
     this.initLayerData();
   }
 
   /**
-   * 初始化内层数据结构
+   * 初始化内层数据结构（基于 initHeight）
    */
   initLayerData() {
     const totalGap = this.layerGap * (this.layerCount + 1);
-    const availableHeight = this.maxHeight - totalGap;
-    const layerBaseHeight = availableHeight / this.layerCount;
+    const availableHeight = this.initHeight - totalGap;
+    const layerHeight = availableHeight / this.layerCount;
 
     this.innerLayers = [];
+    let currentY = this.position.y + this.layerGap;
     for (let i = 0; i < this.layerCount; i++) {
       this.innerLayers.push({
         layerIndex: i,
         barIndex: this.barIndex,
         groupName: this.groupName,
-        baseHeight: layerBaseHeight,
-        scaleY: 0.002,
-        positionY: this.position.y + this.layerGap + (layerBaseHeight * 0.002) / 2 + i * (layerBaseHeight * 0.002 + this.layerGap)
+        baseHeight: layerHeight,  // 基于 initHeight 的每层高度
+        scaleY: 1,  // 初始时撑满（scaleY=1）
+        positionY: currentY + layerHeight / 2
       });
+      currentY += layerHeight + this.layerGap;
     }
   }
 
   /**
-   * 获取层基础高度
+   * 获取基于 initHeight 的层基础高度
    */
   getLayerBaseHeight() {
     const totalGap = this.layerGap * (this.layerCount + 1);
-    const availableHeight = this.maxHeight - totalGap;
+    const availableHeight = this.initHeight - totalGap;
     return availableHeight / this.layerCount;
   }
 
   /**
-   * 更新柱状图高度（计算数据，由 BarCollectionManager 批量更新 InstancedMesh）
-   * @param {Array} layerValues - 每层的数据值数组（0-100）
-   * @returns {Array} 更新后的层数据
+   * 更新外层高度，内层自适应撑满
+   * @param {number} newHeight - 新的外层高度
+   * @returns {Object} 更新后的数据 { outerScaleY, innerLayers }
    */
-  updateHeight(layerValues) {
-    if (typeof layerValues === 'number') {
-      layerValues = new Array(this.layerCount).fill(layerValues / this.layerCount);
-    }
+  updateOuterHeight(newHeight) {
+    this.currentHeight = newHeight;
 
-    if (layerValues.length !== this.layerCount) {
-      console.warn(`数据长度(${layerValues.length})与层数(${this.layerCount})不匹配`);
-      return this.innerLayers;
-    }
+    // 计算外壳的 scaleY
+    const outerScaleY = newHeight / this.initHeight;
 
+    // 计算内层的新高度和位置
     const totalGap = this.layerGap * (this.layerCount + 1);
-    const availableHeight = this.maxHeight - totalGap;
-    const layerBaseHeight = availableHeight / this.layerCount;
+    const availableHeight = newHeight - totalGap;
+    const actualLayerHeight = availableHeight / this.layerCount;
+
+    // 基于 initHeight 的每层高度（几何体基准）
+    const baseLayerHeight = this.getLayerBaseHeight();
 
     let currentY = this.position.y + this.layerGap;
     for (let i = 0; i < this.innerLayers.length; i++) {
-      const normalizedValue = Math.max(0, Math.min(100, layerValues[i]));
-      const targetHeight = (normalizedValue / 100) * layerBaseHeight;
-      const scaleY = Math.max(0.002, targetHeight / layerBaseHeight);
-
-      this.innerLayers[i].scaleY = scaleY;
-      this.innerLayers[i].positionY = currentY + (layerBaseHeight * scaleY) / 2;
-
-      currentY += layerBaseHeight * scaleY + this.layerGap;
+      // 内层 scaleY = 实际层高 / 基准层高
+      this.innerLayers[i].scaleY = actualLayerHeight / baseLayerHeight;
+      this.innerLayers[i].positionY = currentY + actualLayerHeight / 2;
+      currentY += actualLayerHeight + this.layerGap;
     }
 
-    this.currentHeight = currentY - this.position.y - this.layerGap;
-    return this.innerLayers;
+    return {
+      outerScaleY,
+      innerLayers: this.innerLayers
+    };
   }
 
   getCurrentHeight() {
@@ -218,7 +218,7 @@ class BarCollectionManager {
 
     // 存储配置参数
     this.barWidth = 0;
-    this.maxHeight = 0;
+    this.initHeight = 0;  // 初始高度（几何体基准）
     this.defaultLayerCount = 0;
 
     // 用于更新矩阵的临时对象
@@ -230,25 +230,36 @@ class BarCollectionManager {
 
   /**
    * 创建多个柱状图
+   * @param {Object} sceneData - 场景数据 { bars: [{ position, groupName, height, layers: [] }] }
+   * @param {number} barWidth - 柱状图宽度
+   * @param {number} initHeight - 初始高度（用于共享几何体）
    */
-  createBars(positions, barWidth = 2, maxHeight = 50, layerCounts = [], groupNames = []) {
+  createBars(sceneData, barWidth = 2, initHeight = 5) {
+    const { bars: barsData } = sceneData;
+
     this.barWidth = barWidth;
-    this.maxHeight = maxHeight;
-    this.defaultLayerCount = layerCounts[0] || 0;
+    this.initHeight = initHeight;
+    this.defaultLayerCount = barsData[0]?.layers?.length || 0;
 
     // 计算总层数
     this.totalLayerCount = 0;
-    positions.forEach((_, index) => {
-      const layerCount = layerCounts[index] || 0;
-      this.totalLayerCount += layerCount;
+    barsData.forEach((barData) => {
+      this.totalLayerCount += barData.layers?.length || 0;
     });
 
     // 创建 BarManager 实例（纯数据）
     let instanceId = 0;
-    positions.forEach((pos, index) => {
-      const layerCount = layerCounts[index] || 0;
-      const groupName = groupNames[index] || '';
-      const bar = new BarManager(this.scene, pos, barWidth, maxHeight, layerCount, index, groupName);
+    barsData.forEach((barData, index) => {
+      const layerCount = barData.layers?.length || 0;
+      const bar = new BarManager(
+        this.scene,
+        barData.position,
+        barWidth,
+        initHeight,  // 使用 initHeight
+        layerCount,
+        index,
+        barData.groupName || ''
+      );
 
       // 设置外壳的 instanceId
       bar.outerShellInstanceId = index;
@@ -263,24 +274,27 @@ class BarCollectionManager {
       this.bars.push(bar);
     });
 
-    // 创建外壳 InstancedMesh
-    this._createOuterShellInstancedMesh(positions.length);
+    // 创建外壳 InstancedMesh（基于 initHeight）
+    this._createOuterShellInstancedMesh(barsData.length);
 
-    // 创建内层 InstancedMesh
+    // 创建内层 InstancedMesh（基于 initHeight）
     this._createInnerLayerInstancedMesh();
 
-    // 创建合并边框
-    this._createMergedEdges();
-
-    // 初始化所有实例的矩阵
+    // 初始化所有实例的矩阵（初始状态，scaleY=1）
     this._updateAllInstanceMatrices();
+
+    // 使用 sceneData 中的 height 更新到目标高度
+    this._initializeHeights(barsData);
+
+    // 创建合并边框（需要在高度初始化之后）
+    this._createMergedEdges();
   }
 
   /**
    * 创建外壳 InstancedMesh
    */
   _createOuterShellInstancedMesh(count) {
-    const shellGeometry = GeometryCache.getOuterShellGeometry(this.barWidth, this.maxHeight);
+    const shellGeometry = GeometryCache.getOuterShellGeometry(this.barWidth, this.initHeight);
 
     this.outerShellInstancedMesh = new THREE.InstancedMesh(
       shellGeometry,
@@ -292,11 +306,11 @@ class BarCollectionManager {
     };
     this.outerShellInstancedMesh.frustumCulled = false;
 
-    // 设置每个外壳的矩阵
+    // 设置每个外壳的初始矩阵（scaleY=1，基于 initHeight）
     this.bars.forEach((bar, index) => {
       this.tempPosition.set(
         bar.position.x,
-        bar.position.y + this.maxHeight / 2,
+        bar.position.y + this.initHeight / 2,
         bar.position.z
       );
       this.tempScale.set(1, 1, 1);
@@ -311,7 +325,7 @@ class BarCollectionManager {
           groupName: bar.groupName,
           raycastEnabled: true
         },
-        scale: { x: 1, z: 1 }  // 用于悬停缩放状态
+        scale: { x: 1, y: 1, z: 1 }  // 用于缩放状态
       };
     });
 
@@ -324,7 +338,7 @@ class BarCollectionManager {
    */
   _createInnerLayerInstancedMesh() {
     const totalGap = 0.2 * (this.defaultLayerCount + 1);
-    const availableHeight = this.maxHeight - totalGap;
+    const availableHeight = this.initHeight - totalGap;
     const layerBaseHeight = availableHeight / this.defaultLayerCount;
     const innerWidth = this.barWidth * 0.9;
 
@@ -347,7 +361,7 @@ class BarCollectionManager {
    */
   _createMergedEdges() {
     const totalGap = 0.2 * (this.defaultLayerCount + 1);
-    const availableHeight = this.maxHeight - totalGap;
+    const availableHeight = this.initHeight - totalGap;
     const layerBaseHeight = availableHeight / this.defaultLayerCount;
     const innerWidth = this.barWidth * 0.9;
 
@@ -390,7 +404,7 @@ class BarCollectionManager {
     }
 
     const totalGap = 0.2 * (this.defaultLayerCount + 1);
-    const availableHeight = this.maxHeight - totalGap;
+    const availableHeight = this.initHeight - totalGap;
     const layerBaseHeight = availableHeight / this.defaultLayerCount;
     const innerWidth = this.barWidth * 0.9;
 
@@ -436,6 +450,54 @@ class BarCollectionManager {
   }
 
   /**
+   * 初始化高度（使用 sceneData 中的 height 更新到目标高度）
+   * @param {Array} barsData - 柱状图数据数组
+   */
+  _initializeHeights(barsData) {
+    barsData.forEach((barData, index) => {
+      if (this.bars[index] && barData.height !== undefined) {
+        const bar = this.bars[index];
+        const { outerScaleY, innerLayers } = bar.updateOuterHeight(barData.height);
+
+        // 更新外壳矩阵
+        this._updateOuterShellMatrix(index, outerScaleY);
+
+        // 更新内层矩阵
+        innerLayers.forEach((layerData, i) => {
+          const instanceId = bar.layerInstanceIds[i];
+          this._updateInstanceMatrix(instanceId, bar.position, layerData);
+        });
+      }
+    });
+
+    this.outerShellInstancedMesh.instanceMatrix.needsUpdate = true;
+    this.innerLayerInstancedMesh.instanceMatrix.needsUpdate = true;
+    this.innerLayerInstancedMesh.computeBoundingSphere();
+  }
+
+  /**
+   * 更新外壳实例的矩阵（支持高度缩放）
+   */
+  _updateOuterShellMatrix(barIndex, scaleY) {
+    const bar = this.bars[barIndex];
+    if (!bar) return;
+
+    // 位置需要根据缩放后的高度调整
+    const scaledHeight = this.initHeight * scaleY;
+    this.tempPosition.set(
+      bar.position.x,
+      bar.position.y + scaledHeight / 2,
+      bar.position.z
+    );
+    this.tempScale.set(1, scaleY, 1);
+    this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+    this.outerShellInstancedMesh.setMatrixAt(barIndex, this.tempMatrix);
+
+    // 更新代理对象的缩放状态
+    bar.outerShell.scale.y = scaleY;
+  }
+
+  /**
    * 更新单个实例的矩阵
    */
   _updateInstanceMatrix(instanceId, barPosition, layerData) {
@@ -446,18 +508,22 @@ class BarCollectionManager {
   }
 
   /**
-   * 更新外壳实例的缩放
+   * 更新外壳实例的缩放（用于悬停交互，保持当前高度）
    */
   _updateOuterShellScale(barIndex, scaleX, scaleZ) {
     const bar = this.bars[barIndex];
     if (!bar) return;
 
+    // 获取当前的高度缩放
+    const currentHeightScaleY = bar.currentHeight / bar.initHeight;
+    const scaledHeight = this.initHeight * currentHeightScaleY;
+
     this.tempPosition.set(
       bar.position.x,
-      bar.position.y + this.maxHeight / 2,
+      bar.position.y + scaledHeight / 2,
       bar.position.z
     );
-    this.tempScale.set(scaleX, 1, scaleZ);
+    this.tempScale.set(scaleX, currentHeightScaleY, scaleZ);
     this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
     this.outerShellInstancedMesh.setMatrixAt(barIndex, this.tempMatrix);
     this.outerShellInstancedMesh.instanceMatrix.needsUpdate = true;
@@ -465,20 +531,26 @@ class BarCollectionManager {
 
   /**
    * 更新所有柱状图的高度
+   * @param {Array} heights - 每个柱状图的目标高度数组
    */
-  updateAllHeights(values) {
-    values.forEach((value, index) => {
+  updateAllHeights(heights) {
+    heights.forEach((height, index) => {
       if (this.bars[index]) {
         const bar = this.bars[index];
-        bar.updateHeight(value);
+        const { outerScaleY, innerLayers } = bar.updateOuterHeight(height);
 
-        // 更新对应实例的矩阵
-        bar.innerLayers.forEach((layerData, i) => {
+        // 更新外壳矩阵
+        this._updateOuterShellMatrix(index, outerScaleY);
+
+        // 更新内层矩阵
+        innerLayers.forEach((layerData, i) => {
           const instanceId = bar.layerInstanceIds[i];
           this._updateInstanceMatrix(instanceId, bar.position, layerData);
         });
       }
     });
+
+    this.outerShellInstancedMesh.instanceMatrix.needsUpdate = true;
     this.innerLayerInstancedMesh.instanceMatrix.needsUpdate = true;
     this.innerLayerInstancedMesh.computeBoundingSphere();
 
