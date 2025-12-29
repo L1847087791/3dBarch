@@ -98,8 +98,9 @@ class BarManager {
    * @param {number} layerCount - 分层数量
    * @param {number} barIndex - 柱状图在集合中的索引（用于交互识别）
    * @param {string} groupName - 所属堆的名称（如 '数据集 A'）
+   * @param {number} baseLayerHeight - 统一的基准层高（由 BarCollectionManager 传入）
    */
-  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, initHeight = 5, layerCount = 20, barIndex = 0, groupName = '') {
+  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, initHeight = 5, layerCount = 20, barIndex = 0, groupName = '', baseLayerHeight = 0.088) {
     this.scene = scene;
     this.position = position;
     this.barWidth = barWidth;
@@ -108,6 +109,7 @@ class BarManager {
     this.layerCount = layerCount;
     this.barIndex = barIndex;
     this.groupName = groupName;
+    this.baseLayerHeight = baseLayerHeight;  // 统一的基准层高（几何体尺寸）
 
     // 外壳不再作为独立 Mesh，改为 InstancedMesh 的一部分
     // 但保留 outerShell 引用用于交互（由 BarCollectionManager 设置）
@@ -126,12 +128,17 @@ class BarManager {
   }
 
   /**
-   * 初始化内层数据结构（基于 initHeight）
+   * 初始化内层数据结构（基于 initHeight 和统一的 baseLayerHeight）
+   * 每个柱状图根据自己的 layerCount 计算实际层高和 scaleY
    */
   initLayerData() {
+    // 每个柱状图根据自己的层数计算实际的层高
     const totalGap = this.layerGap * (this.layerCount + 1);
     const availableHeight = this.initHeight - totalGap;
-    const layerHeight = availableHeight / this.layerCount;
+    const actualLayerHeight = availableHeight / this.layerCount;
+
+    // scaleY = 实际层高 / 基准层高（几何体尺寸）
+    const scaleY = actualLayerHeight / this.baseLayerHeight;
 
     this.innerLayers = [];
     let currentY = this.position.y + this.layerGap;
@@ -140,21 +147,19 @@ class BarManager {
         layerIndex: i,
         barIndex: this.barIndex,
         groupName: this.groupName,
-        baseHeight: layerHeight,  // 基于 initHeight 的每层高度
-        scaleY: 1,  // 初始时撑满（scaleY=1）
-        positionY: currentY + layerHeight / 2
+        baseHeight: this.baseLayerHeight,  // 统一的基准层高
+        scaleY: scaleY,  // 根据实际层数计算的 scaleY
+        positionY: currentY + actualLayerHeight / 2
       });
-      currentY += layerHeight + this.layerGap;
+      currentY += actualLayerHeight + this.layerGap;
     }
   }
 
   /**
-   * 获取基于 initHeight 的层基础高度
+   * 获取统一的基准层高（几何体尺寸）
    */
   getLayerBaseHeight() {
-    const totalGap = this.layerGap * (this.layerCount + 1);
-    const availableHeight = this.initHeight - totalGap;
-    return availableHeight / this.layerCount;
+    return this.baseLayerHeight;
   }
 
   /**
@@ -219,7 +224,8 @@ class BarCollectionManager {
     // 存储配置参数
     this.barWidth = 0;
     this.initHeight = 0;  // 初始高度（几何体基准）
-    this.defaultLayerCount = 0;
+    this.baseLayerHeight = 0;  // 统一的基准层高（几何体尺寸）
+    this.layerGap = 0.2;  // 层间隙
 
     // 用于更新矩阵的临时对象
     this.tempMatrix = new THREE.Matrix4();
@@ -233,13 +239,16 @@ class BarCollectionManager {
    * @param {Object} sceneData - 场景数据 { bars: [{ position, groupName, height, layers: [] }] }
    * @param {number} barWidth - 柱状图宽度
    * @param {number} initHeight - 初始高度（用于共享几何体）
+   * @param {number} baseLayerCount - 基准层数（用于计算统一的几何体尺寸，默认50）
    */
-  createBars(sceneData, barWidth = 2, initHeight = 5) {
+  createBars(sceneData, barWidth = 2, initHeight = 5, baseLayerCount = 50) {
     const { bars: barsData } = sceneData;
 
     this.barWidth = barWidth;
     this.initHeight = initHeight;
-    this.defaultLayerCount = barsData[0]?.layers?.length || 0;
+    // 计算统一的基准层高（几何体尺寸基于此）
+    const totalGapForBase = this.layerGap * (baseLayerCount + 1);
+    this.baseLayerHeight = (initHeight - totalGapForBase) / baseLayerCount;
 
     // 计算总层数
     this.totalLayerCount = 0;
@@ -255,10 +264,11 @@ class BarCollectionManager {
         this.scene,
         barData.position,
         barWidth,
-        initHeight,  // 使用 initHeight
+        initHeight,
         layerCount,
         index,
-        barData.groupName || ''
+        barData.groupName || '',
+        this.baseLayerHeight  // 传入统一的基准层高
       );
 
       // 设置外壳的 instanceId
@@ -337,12 +347,9 @@ class BarCollectionManager {
    * 创建内层 InstancedMesh
    */
   _createInnerLayerInstancedMesh() {
-    const totalGap = 0.2 * (this.defaultLayerCount + 1);
-    const availableHeight = this.initHeight - totalGap;
-    const layerBaseHeight = availableHeight / this.defaultLayerCount;
     const innerWidth = this.barWidth * 0.9;
-
-    const layerGeometry = GeometryCache.getInnerLayerGeometry(innerWidth, layerBaseHeight);
+    // 使用统一的基准层高
+    const layerGeometry = GeometryCache.getInnerLayerGeometry(innerWidth, this.baseLayerHeight);
 
     this.innerLayerInstancedMesh = new THREE.InstancedMesh(
       layerGeometry,
@@ -360,12 +367,9 @@ class BarCollectionManager {
    * 创建合并边框（所有边框合并为一个 LineSegments）
    */
   _createMergedEdges() {
-    const totalGap = 0.2 * (this.defaultLayerCount + 1);
-    const availableHeight = this.initHeight - totalGap;
-    const layerBaseHeight = availableHeight / this.defaultLayerCount;
     const innerWidth = this.barWidth * 0.9;
-
-    const edgesGeometry = GeometryCache.getEdgesGeometry(innerWidth, layerBaseHeight);
+    // 使用统一的基准层高
+    const edgesGeometry = GeometryCache.getEdgesGeometry(innerWidth, this.baseLayerHeight);
 
     // 收集所有边框几何体
     const edgesGeometries = [];
@@ -403,12 +407,9 @@ class BarCollectionManager {
       this.mergedEdgesMesh.geometry.dispose();
     }
 
-    const totalGap = 0.2 * (this.defaultLayerCount + 1);
-    const availableHeight = this.initHeight - totalGap;
-    const layerBaseHeight = availableHeight / this.defaultLayerCount;
     const innerWidth = this.barWidth * 0.9;
-
-    const edgesGeometry = GeometryCache.getEdgesGeometry(innerWidth, layerBaseHeight);
+    // 使用统一的基准层高
+    const edgesGeometry = GeometryCache.getEdgesGeometry(innerWidth, this.baseLayerHeight);
 
     // 收集所有边框几何体
     const edgesGeometries = [];
