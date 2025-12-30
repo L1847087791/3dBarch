@@ -123,8 +123,9 @@ class BarManager {
    * @param {string} groupName - 所属堆的名称（如 '数据集 A'）
    * @param {number} baseLayerHeight - 统一的基准层高（由 BarCollectionManager 传入）
    * @param {string} outerColor - 外层颜色标识（如 'normal', 'warning'）
+   * @param {string} uuid - 外层唯一标识（用于交互传参）
    */
-  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, initHeight = 5, layersData = [], barIndex = 0, groupName = '', baseLayerHeight = 0.088, outerColor = 'normal') {
+  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, initHeight = 5, layersData = [], barIndex = 0, groupName = '', baseLayerHeight = 0.088, outerColor = 'normal', uuid = '') {
     this.scene = scene;
     this.position = position;
     this.barWidth = barWidth;
@@ -136,6 +137,7 @@ class BarManager {
     this.groupName = groupName;
     this.baseLayerHeight = baseLayerHeight;  // 统一的基准层高（几何体尺寸）
     this.outerColor = outerColor;  // 外层颜色标识
+    this.uuid = uuid;  // 外层唯一标识（用于交互传参）
 
     // 外壳不再作为独立 Mesh，改为 InstancedMesh 的一部分
     // 但保留 outerShell 引用用于交互（由 BarCollectionManager 设置）
@@ -171,6 +173,8 @@ class BarManager {
     for (let i = 0; i < this.layerCount; i++) {
       // 获取该层的颜色配置，默认为 'normal'
       const layerColorKey = this.layersData[i]?.color || 'normal';
+      // 获取该层的 uuid，默认使用 uuidv4() 生成
+      const layerUuid = this.layersData[i]?.uuid || '';
       this.innerLayers.push({
         layerIndex: i,
         barIndex: this.barIndex,
@@ -178,7 +182,8 @@ class BarManager {
         baseHeight: this.baseLayerHeight,  // 统一的基准层高
         scaleY: scaleY,  // 根据实际层数计算的 scaleY
         positionY: currentY + actualLayerHeight / 2,
-        color: layerColorKey  // 颜色标识
+        color: layerColorKey,  // 颜色标识
+        uuid: layerUuid  // 内层唯一标识（用于交互传参）
       });
       currentY += actualLayerHeight + this.layerGap;
     }
@@ -300,7 +305,8 @@ class BarCollectionManager {
         index,
         barData.groupName || '',
         this.baseLayerHeight,  // 传入统一的基准层高
-        barData.outerColor || 'normal'  // 传入外层颜色
+        barData.outerColor || 'normal',  // 传入外层颜色
+        barData.uuid // 传入外层唯一标识
       );
 
       // 设置外壳的 instanceId

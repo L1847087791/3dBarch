@@ -4,6 +4,7 @@ import { BarCollectionManager } from '../utils/BarManager';
 import CameraControls from '../utils/CameraControls';
 import GroupIndicatorManager from '../utils/GroupIndicatorManager';
 import InteractionManager from '../utils/InteractionManager';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * 生成场景数据（模拟后端返回）
@@ -29,13 +30,15 @@ function generateSceneData() {
       const layerCount = group1LayerCount++;
       // 为每层随机分配颜色
       const layers = Array.from({ length: layerCount }, (_, i) => ({
-        color: innerColors[i % innerColors.length]
+        color: innerColors[i % innerColors.length],
+        uuid:uuidv4()
       }));
       bars.push({
         position: { x: group1StartX + col * spacing, y: 0, z: group1StartZ + row * spacing },
         groupName: '数据集 A',
         height: 40,
-        outerColor: 'normal',  // 外层颜色
+        outerColor: 'normal',
+        uuid:uuidv4(),
         layers
       });
     }
@@ -55,13 +58,15 @@ function generateSceneData() {
       const layerCount = group2LayerCount;
       // 根据层索引设置不同颜色（模拟告警级别）
       const layers = Array.from({ length: layerCount }, (_, i) => ({
-        color: innerColors[i % innerColors.length]
+        color: innerColors[i % innerColors.length],
+        uuid:uuidv4()
       }));
       bars.push({
         position: { x: group2StartX + col * spacing, y: 0, z: group2StartZ + row * spacing },
         groupName: '数据集 B',
         height: 40,
-        outerColor:'normal',  
+        outerColor:'normal',
+        uuid:uuidv4(),  
         layers
       });
     }
@@ -77,13 +82,15 @@ function generateSceneData() {
     for (let col = 0; col < group3Cols; col++) {
       // 创建渐变颜色效果
       const layers = Array.from({ length: group3LayerCount }, (_, i) => ({
-         color: innerColors[i % innerColors.length]
+         color: innerColors[i % innerColors.length],
+         uuid:uuidv4()
       }));
       bars.push({
         position: { x: group3StartX + col * spacing, y: 0, z: group3StartZ + row * spacing },
         groupName: '数据集 C',
         height: 40,
         outerColor: 'normal',  
+        uuid:uuidv4(),
         layers
       });
     }

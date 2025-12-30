@@ -543,6 +543,7 @@ class InteractionManager {
         console.log('点击了柱状图:', {
           barIndex: barIndex,
           groupName: bar.groupName,
+          uuid: bar.uuid,
           bar: bar
         });
 
@@ -571,9 +572,12 @@ class InteractionManager {
 
         // 只处理当前选中柱状图的内层
         if (layerInfo && layerInfo.barIndex === this.selectedBarIndex) {
+          const layerData = bar.innerLayers[layerInfo.layerIndex];
           console.log('点击了内层:', {
             barIndex: this.selectedBarIndex,
             layerIndex: layerInfo.layerIndex,
+            barUuid: bar.uuid,
+            layerUuid: layerData?.uuid,
             groupName: bar.groupName,
             instanceId: instanceId
           });
@@ -598,6 +602,7 @@ class InteractionManager {
             console.log('点击了柱状图:', {
               barIndex: barIndex,
               groupName: clickedBar.groupName,
+              uuid: clickedBar.uuid,
               bar: clickedBar
             });
 
