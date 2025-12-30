@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import BarAnimationManager from './BarAnimationManager';
 
 /**
  * 颜色映射表（告警级别）
@@ -144,7 +145,7 @@ class BarManager {
     this.outerShell = null;
     this.outerShellInstanceId = -1;  // 外壳在 InstancedMesh 中的 ID
 
-    this.layerGap = 0.2;  // 固定间隙
+    this.layerGap = 0;  // 固定间隙
 
     // 内层数据（用于交互和更新，不再存储 Mesh 引用）
     this.innerLayers = [];
@@ -267,6 +268,9 @@ class BarCollectionManager {
     this.tempQuaternion = new THREE.Quaternion();
     this.tempScale = new THREE.Vector3();
     this.tempColor = new THREE.Color();  // 用于设置实例颜色
+
+    // GSAP动画管理器
+    this.animationManager = null;
   }
 
   /**
@@ -331,14 +335,20 @@ class BarCollectionManager {
     // 初始化所有实例的矩阵（初始状态，scaleY=1）
     this._updateAllInstanceMatrices();
 
-    // 使用 sceneData 中的 height 更新到目标高度
-    this._initializeHeights(barsData);
-
     // 初始化所有实例的颜色
     this._initializeColors();
 
-    // 创建合并边框（需要在高度初始化之后）
-    this._createMergedEdges();
+    // 初始化动画管理器
+    this.animationManager = new BarAnimationManager(this);
+
+    // 使用动画方式更新到目标高度
+    this._initializeHeights(barsData);
+
+    // 创建合并边框（需要在高度初始化之后，使用延迟确保动画完成后创建）
+    // 注意：边框需要在动画完成后创建，否则会使用初始高度
+    setTimeout(() => {
+      this._createMergedEdges();
+    }, 850); // 稍微延迟以确保动画完成
   }
 
   /**
@@ -492,29 +502,15 @@ class BarCollectionManager {
   }
 
   /**
-   * 初始化高度（使用 sceneData 中的 height 更新到目标高度）
+   * 初始化高度（使用动画从初始高度过渡到目标高度）
    * @param {Array} barsData - 柱状图数据数组
    */
   _initializeHeights(barsData) {
-    barsData.forEach((barData, index) => {
-      if (this.bars[index] && barData.height !== undefined) {
-        const bar = this.bars[index];
-        const { outerScaleY, innerLayers } = bar.updateOuterHeight(barData.height);
-
-        // 更新外壳矩阵
-        this._updateOuterShellMatrix(index, outerScaleY);
-
-        // 更新内层矩阵
-        innerLayers.forEach((layerData, i) => {
-          const instanceId = bar.layerInstanceIds[i];
-          this._updateInstanceMatrix(instanceId, bar.position, layerData);
-        });
-      }
+    // 使用动画管理器进行高度动画
+    this.animationManager.animateHeights(barsData, {
+      duration: 0.8,
+      ease: 'power2.out'
     });
-
-    this.outerShellInstancedMesh.instanceMatrix.needsUpdate = true;
-    this.innerLayerInstancedMesh.instanceMatrix.needsUpdate = true;
-    this.innerLayerInstancedMesh.computeBoundingSphere();
   }
 
   /**
@@ -596,7 +592,7 @@ class BarCollectionManager {
   }
 
   /**
-   * 更新所有柱状图的高度
+   * 更新所有柱状图的高度（无动画，立即生效）
    * @param {Array} heights - 每个柱状图的目标高度数组
    */
   updateAllHeights(heights) {
@@ -622,6 +618,28 @@ class BarCollectionManager {
 
     // 重新生成合并边框
     this._updateMergedEdges();
+  }
+
+  /**
+   * 动画更新所有柱状图的高度
+   * @param {Array} heights - 每个柱状图的目标高度数组
+   * @param {Object} options - 动画选项 { duration, ease, onComplete }
+   * @returns {gsap.core.Tween} GSAP 动画实例
+   */
+  animateAllHeights(heights, options = {}) {
+    // 转换为 barsData 格式
+    const barsData = heights.map(height => ({ height }));
+
+    // 使用动画管理器
+    return this.animationManager.animateHeights(barsData, {
+      duration: options.duration || 0.8,
+      ease: options.ease || 'power2.out',
+      onComplete: () => {
+        // 动画完成后更新边框
+        this._updateMergedEdges();
+        if (options.onComplete) options.onComplete();
+      }
+    });
   }
 
   /**
