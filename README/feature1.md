@@ -196,7 +196,7 @@ actualLayerHeight = (targetHeight - gaps) / layerCount
 | 边框更新开销 | 每次高度变化需重新合并 8000 个边框 | 考虑着色器实现 |
 | InstancedMesh 固定 count | 无法动态增删柱状图 | 预分配或重建 |
 | 材质个性化受限 | 共享材质，仅支持 `setColorAt` | 自定义着色器 |
-| 动画期间边框不同步 | 边框在动画后延迟创建 | 可优化为实时更新 |
+| 动画期间边框不同步 | 边框在动画后延迟创建 | 可优化为实时更新 | (已解决，在gsap动画onComplete回调中创建)
 
 ---
 

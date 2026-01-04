@@ -341,14 +341,8 @@ class BarCollectionManager {
     // 初始化动画管理器
     this.animationManager = new BarAnimationManager(this);
 
-    // 使用动画方式更新到目标高度
+    // 使用动画方式更新到目标高度，动画完成后创建边框
     this._initializeHeights(barsData);
-
-    // 创建合并边框（需要在高度初始化之后，使用延迟确保动画完成后创建）
-    // 注意：边框需要在动画完成后创建，否则会使用初始高度
-    setTimeout(() => {
-      this._createMergedEdges();
-    }, 850); // 稍微延迟以确保动画完成
   }
 
   /**
@@ -506,10 +500,13 @@ class BarCollectionManager {
    * @param {Array} barsData - 柱状图数据数组
    */
   _initializeHeights(barsData) {
-    // 使用动画管理器进行高度动画
+    // 使用动画管理器进行高度动画，动画完成后创建边框
     this.animationManager.animateHeights(barsData, {
       duration: 0.8,
-      ease: 'power2.out'
+      ease: 'power2.out',
+      onComplete: () => {
+        this._createMergedEdges();
+      }
     });
   }
 
