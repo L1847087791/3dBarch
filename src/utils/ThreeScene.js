@@ -23,7 +23,7 @@ class ThreeScene {
   init() {
     // 创建场景
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#1B1E28'); // 淡灰色背景
+    this.scene.background = new THREE.Color('lightblue'); // 蓝色背景
 
     //创建坐标辅助器，仅用于区分笛卡尔坐标 ：X 轴为红色，Y 轴为绿色，Z 轴为蓝色
     const axesHelper = new THREE.AxesHelper(200)
@@ -32,6 +32,14 @@ class ThreeScene {
     //创建网格辅助器，调试场景图位置
     const grideHelper = new THREE.GridHelper(1000,100)   //步长为1000/100=10
     this.scene.add(grideHelper)
+
+    //添加地平面
+    const groundMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(1000,1000),
+      new THREE.MeshPhongMaterial({color:'gray'})
+    )
+      groundMesh.rotation.x = Math.PI * -0.5
+      this.scene.add(groundMesh)
 
     // 创建透视相机
     const width = this.container.clientWidth;
