@@ -315,7 +315,7 @@ class InteractionManager {
     this.selectionCursor = new THREE.Group();
 
     // 金色发光材质
-    const cursorMaterial = new THREE.MeshBasicMaterial({
+    const cursorMaterial = new THREE.MeshPhongMaterial({
       color: 0xFFD700,           // 金色
       emissive: 0xFFD700,        // 金色发光
       emissiveIntensity: 1.0     // 发光强度

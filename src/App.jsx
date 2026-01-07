@@ -1,8 +1,8 @@
 import React from 'react';
-import BarChart3D from './components/BarChart3D';
+import BarChartContainer from './components/BarChartContainer';
 
 function App() {
-  return <BarChart3D />;
+  return <BarChartContainer/>;
 }
 
 export default App;
