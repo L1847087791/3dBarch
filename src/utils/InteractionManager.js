@@ -109,10 +109,10 @@ class InteractionManager {
     // 更新射线
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
-    // 如果有选中的柱状图，优先检测内层悬停
+    // 如果有选中的柱状图，只检测内层悬停，跳过外层悬停
     if (this.selectedBarIndex !== null) {
       this._handleInnerLayerHover();
-      // return;
+      return;
     }
 
     // 否则检测外层悬停
@@ -768,6 +768,9 @@ class InteractionManager {
     // 创建选中光标
     this._createSelectionCursor(barIndex);
 
+    // 触发虚化聚焦效果
+    this.barCollectionManager.focusOnBar(barIndex);
+
     console.log(`柱状图 ${barIndex} 已选中，外层射线检测已禁用，可以与内层交互`);
   }
 
@@ -786,6 +789,9 @@ class InteractionManager {
 
     // 移除选中光标
     this._removeSelectionCursor();
+
+    // 取消虚化聚焦
+    this.barCollectionManager.unfocus();
 
     console.log(`柱状图 ${this.selectedBarIndex} 已取消选中，外层射线检测已恢复`);
 

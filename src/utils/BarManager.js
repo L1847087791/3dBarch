@@ -739,6 +739,94 @@ class BarCollectionManager {
     return this.bars;
   }
 
+  /**
+   * 聚焦到指定柱状图（虚化其他柱状图）
+   * @param {number} barIndex - 要聚焦的柱状图索引
+   */
+  focusOnBar(barIndex) {
+    const bars = this.bars;
+    const dimFactor = 0.2; // 虚化程度：0.2 = 20% 亮度
+
+    bars.forEach((bar, index) => {
+      if (index === barIndex) {
+        // 选中柱状图：保持原样，确保可交互
+        bar.outerShell.userData.raycastEnabled = true;
+        return;
+      }
+
+      // 其他柱状图：降低亮度 + 禁用交互
+      this._dimBar(index, dimFactor);
+      bar.outerShell.userData.raycastEnabled = false;
+    });
+
+    this.outerShellInstancedMesh.instanceColor.needsUpdate = true;
+    this.innerLayerInstancedMesh.instanceColor.needsUpdate = true;
+
+    this.focusedBarIndex = barIndex;
+  }
+
+  /**
+   * 取消聚焦，恢复所有柱状图
+   */
+  unfocus() {
+    if (this.focusedBarIndex === null && this.focusedBarIndex === undefined) return;
+
+    this.bars.forEach((bar, index) => {
+      this._restoreBarColor(index);
+      bar.outerShell.userData.raycastEnabled = true;
+    });
+
+    this.outerShellInstancedMesh.instanceColor.needsUpdate = true;
+    this.innerLayerInstancedMesh.instanceColor.needsUpdate = true;
+
+    this.focusedBarIndex = null;
+  }
+
+  /**
+   * 降低单个柱状图亮度
+   * @param {number} barIndex - 柱状图索引
+   * @param {number} factor - 亮度因子 (0-1)
+   */
+  _dimBar(barIndex, factor) {
+    const bar = this.bars[barIndex];
+
+    // 外壳降低亮度
+    const outerColorHex = ColorMap.outer[bar.outerColor] || ColorMap.outer.normal;
+    const outerColor = new THREE.Color(outerColorHex);
+    outerColor.multiplyScalar(factor);
+    this.outerShellInstancedMesh.setColorAt(barIndex, outerColor);
+
+    // 内层降低亮度
+    bar.layerInstanceIds.forEach((instanceId, layerIndex) => {
+      const layerColorKey = bar.innerLayers[layerIndex].color;
+      const innerColorHex = ColorMap.inner[layerColorKey] || ColorMap.inner.normal;
+      const innerColor = new THREE.Color(innerColorHex);
+      innerColor.multiplyScalar(factor);
+      this.innerLayerInstancedMesh.setColorAt(instanceId, innerColor);
+    });
+  }
+
+  /**
+   * 恢复单个柱状图颜色
+   * @param {number} barIndex - 柱状图索引
+   */
+  _restoreBarColor(barIndex) {
+    const bar = this.bars[barIndex];
+
+    // 恢复外壳颜色
+    const outerColorHex = ColorMap.outer[bar.outerColor] || ColorMap.outer.normal;
+    const outerColor = new THREE.Color(outerColorHex);
+    this.outerShellInstancedMesh.setColorAt(barIndex, outerColor);
+
+    // 恢复内层颜色
+    bar.layerInstanceIds.forEach((instanceId, layerIndex) => {
+      const layerColorKey = bar.innerLayers[layerIndex].color;
+      const innerColorHex = ColorMap.inner[layerColorKey] || ColorMap.inner.normal;
+      const innerColor = new THREE.Color(innerColorHex);
+      this.innerLayerInstancedMesh.setColorAt(instanceId, innerColor);
+    });
+  }
+
   dispose() {
     // 销毁外壳 InstancedMesh
     if (this.outerShellInstancedMesh) {
