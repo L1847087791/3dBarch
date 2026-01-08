@@ -255,12 +255,13 @@ class InteractionManager {
             y: bar.currentHeight,
             z: bar.position.z
           });
+          const layerData = bar.innerLayers[layerIndex];
           this.callbacks.onLayerHover({
             type: 'inner',
             barIndex: this.selectedBarIndex,
             layerIndex,
             barUuid: bar.uuid,
-            layerUuid: layerInfo.layerData?.uuid,
+            layerUuid: layerData?.uuid,
             groupName: bar.groupName,
             screenPosition
           });
