@@ -49,7 +49,7 @@ const BarChart3D = ({barSceneData}) => {
     controlsRef.current = new CameraControls(
       camera,
       renderer.domElement,
-      { x: 0, y: 0, z: 8 } // 注视目标点
+      { x: 0, y: 0, z: 0 } // 注视目标点
     );
 
     console.log('相机控制已设置');

@@ -18,8 +18,8 @@ function generateSceneData1() {
   // 第一堆：60个 (6x10) - 左前方 - 每个柱状图递增层数
   const group1Rows = 10;
   const group1Cols = 6;
-  const group1StartX = -100;
-  const group1StartZ = -200;
+  const group1StartX = -250;
+  const group1StartZ = -100;
   let group1LayerCount = 1;
   for (let row = 0; row < group1Rows; row++) {
     for (let col = 0; col < group1Cols; col++) {
@@ -43,7 +43,7 @@ function generateSceneData1() {
   // 第二堆：60个 (6x10) - 右前方 - 每个柱状图递增层数
   const group2Rows = 10;
   const group2Cols = 6;
-  const group2StartX = 100;
+  const group2StartX = 80;
   const group2StartZ = -100;
   let group2LayerCount = 1;
   for (let row = 0; row < group2Rows; row++) {
@@ -71,8 +71,8 @@ function generateSceneData1() {
   // 第三堆：40个 (5x8) - 后中方 - 每个柱状图50层
   const group3Rows = 8;
   const group3Cols = 5;
-  const group3StartX = -50;
-  const group3StartZ = 100;
+  const group3StartX = -80;
+  const group3StartZ = -100;
   const group3LayerCount = 50;
   for (let row = 0; row < group3Rows; row++) {
     for (let col = 0; col < group3Cols; col++) {
@@ -165,6 +165,7 @@ const BarChartContainer = ()=>{
             <Drawer
             open={open}
             onClose= {closeDrawer}
+            mask={false}
             >
 
             </Drawer>
