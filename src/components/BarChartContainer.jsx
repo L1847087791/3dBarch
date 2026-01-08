@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import BarChart3D from "./BarChart3D";
 import { v4 as uuidv4 } from 'uuid';
-import { Button,Drawer } from "antd";
+import { Button, Drawer } from "antd";
 /**
  * 生成场景数据（模拟后端返回）
  * 统一的数据接口格式，包含位置、分组、高度、层数据
@@ -129,48 +129,198 @@ function generateGroupIndicatorInfo() {
   ];
 }
 
-const BarChartContainer = ()=>{
-    const [barSceneData,setBarSceneData] = useState(null)
-    const [open,setOpen] = useState(false)
+/**
+ * 截断UUID显示
+ * @param {string} uuid - 完整UUID
+ * @param {number} length - 显示长度
+ */
+const truncateUuid = (uuid, length = 8) => {
+  if (!uuid) return '-';
+  return uuid.length > length ? `${uuid.slice(0, length)}...` : uuid;
+};
 
-    const getBarSceneData1 = ()=>{
-        const data = generateSceneData1()
-        setBarSceneData(data)
-    }
-    const getBarSceneData2 = ()=>{
-        setBarSceneData(null)
-    }
-    const showDrawer =  ()=>{
-      setOpen(true)
-    }
-    const closeDrawer = ()=>{
-      setOpen(false)
-    }
+const BarChartContainer = () => {
+  const [barSceneData, setBarSceneData] = useState(null);
 
-    return(
-        <div style={{width:'100%',height:'100%',display:"flex",flexDirection:'column'}}>
-          {/* 控制面板 */}
-            <div style={{height:'80px',textAlign:"center",backgroundColor:'#3C444D'}} >
-                <Button onClick={getBarSceneData1}>获取数据1</Button>
-                <Button onClick={getBarSceneData2}>获取数据2</Button>
-                <Button onClick={showDrawer}>模拟弹窗</Button>
-            </div>
-            {/* canvas画布 */}
-            <div
-             style={{flex:1}}
-            >
-                <BarChart3D barSceneData={barSceneData} />
-            </div>
-            {/* 抽屉 */}
-            <Drawer
-            open={open}
-            onClose= {closeDrawer}
-            mask={false}
-            >
+  // 浮层状态
+  const [tooltip, setTooltip] = useState({
+    visible: false,
+    x: 0,
+    y: 0,
+    data: null
+  });
 
-            </Drawer>
-        </div>
-    )
-}
+  // 抽屉状态
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerData, setDrawerData] = useState(null);
 
-export default BarChartContainer
+  const getBarSceneData1 = () => {
+    const data = generateSceneData1();
+    setBarSceneData(data);
+  };
+
+  const getBarSceneData2 = () => {
+    setBarSceneData(null);
+    setDrawerOpen(false);
+    setDrawerData(null);
+  };
+
+  // 外层悬停回调
+  const handleBarHover = useCallback((data) => {
+    setTooltip({
+      visible: true,
+      x: data.screenPosition.x,
+      y: data.screenPosition.y,
+      data: {
+        type: 'outer',
+        barIndex: data.barIndex,
+        uuid: data.uuid,
+        groupName: data.groupName
+      }
+    });
+  }, []);
+
+  // 外层离开回调
+  const handleBarLeave = useCallback(() => {
+    setTooltip(prev => ({ ...prev, visible: false }));
+  }, []);
+
+  // 外层点击回调
+  const handleBarClick = useCallback((data) => {
+    setDrawerData({
+      type: 'bar',
+      barIndex: data.barIndex,
+      uuid: data.uuid,
+      groupName: data.groupName
+    });
+    setDrawerOpen(true);
+  }, []);
+
+  // 内层悬停回调
+  const handleLayerHover = useCallback((data) => {
+    setTooltip({
+      visible: true,
+      x: data.screenPosition.x,
+      y: data.screenPosition.y,
+      data: {
+        type: 'inner',
+        barIndex: data.barIndex,
+        layerIndex: data.layerIndex,
+        barUuid: data.barUuid,
+        layerUuid: data.layerUuid,
+        groupName: data.groupName
+      }
+    });
+  }, []);
+
+  // 内层离开回调
+  const handleLayerLeave = useCallback(() => {
+    setTooltip(prev => ({ ...prev, visible: false }));
+  }, []);
+
+  // 内层点击回调
+  const handleLayerClick = useCallback((data) => {
+    setDrawerData({
+      type: 'layer',
+      barIndex: data.barIndex,
+      layerIndex: data.layerIndex,
+      barUuid: data.barUuid,
+      layerUuid: data.layerUuid,
+      groupName: data.groupName
+    });
+    setDrawerOpen(true);
+  }, []);
+
+  // 关闭抽屉
+  const closeDrawer = () => {
+    setDrawerOpen(false);
+  };
+
+  return (
+    <div style={{ width: '100%', height: '100%', display: "flex", flexDirection: 'column' }}>
+      {/* 控制面板 */}
+      <div style={{ height: '80px', textAlign: "center", backgroundColor: '#3C444D' }}>
+        <Button onClick={getBarSceneData1}>获取数据1</Button>
+        <Button onClick={getBarSceneData2}>清空数据</Button>
+      </div>
+
+      {/* canvas画布容器 */}
+      <div style={{ flex: 1, position: 'relative' }}>
+        <BarChart3D
+          barSceneData={barSceneData}
+          onBarHover={handleBarHover}
+          onBarLeave={handleBarLeave}
+          onBarClick={handleBarClick}
+          onLayerHover={handleLayerHover}
+          onLayerLeave={handleLayerLeave}
+          onLayerClick={handleLayerClick}
+        />
+
+        {/* 浮层 Tooltip */}
+        {tooltip.visible && tooltip.data && (
+          <div
+            style={{
+              position: 'absolute',
+              left: tooltip.x,
+              top: tooltip.y,
+              transform: 'translate(-50%, -100%) translateY(-10px)',
+              pointerEvents: 'none',
+              zIndex: 10,
+              backgroundColor: 'rgba(0, 0, 0, 0.75)',
+              color: '#fff',
+              padding: '8px 12px',
+              borderRadius: '4px',
+              fontSize: '12px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {tooltip.data.type === 'outer' ? (
+              <>
+                <div><strong>主机</strong></div>
+                <div>索引: {tooltip.data.barIndex}</div>
+                <div>UUID: {truncateUuid(tooltip.data.uuid)}</div>
+              </>
+            ) : (
+              <>
+                <div>索引: {tooltip.data.layerIndex}</div>
+                <div>UUID: {truncateUuid(tooltip.data.layerUuid)}</div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 抽屉 */}
+      <Drawer
+        title={drawerData?.type === 'bar' ? '主机详情' : '内层详情'}
+        open={drawerOpen}
+        onClose={closeDrawer}
+        mask={false}
+      >
+        {drawerData && (
+          <div>
+            {drawerData.type === 'bar' ? (
+              <>
+                <p><strong>类型:</strong> 主机</p>
+                <p><strong>索引:</strong> {drawerData.barIndex}</p>
+                <p><strong>分组:</strong> {drawerData.groupName}</p>
+                <p><strong>UUID:</strong> {truncateUuid(drawerData.uuid, 16)}</p>
+              </>
+            ) : (
+              <>
+                <p><strong>类型:</strong> 内层</p>
+                <p><strong>主机索引:</strong> {drawerData.barIndex}</p>
+                <p><strong>内层索引:</strong> {drawerData.layerIndex}</p>
+                <p><strong>分组:</strong> {drawerData.groupName}</p>
+                <p><strong>主机UUID:</strong> {truncateUuid(drawerData.barUuid, 16)}</p>
+                <p><strong>内层UUID:</strong> {truncateUuid(drawerData.layerUuid, 16)}</p>
+              </>
+            )}
+          </div>
+        )}
+      </Drawer>
+    </div>
+  );
+};
+
+export default BarChartContainer;

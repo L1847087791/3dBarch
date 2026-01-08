@@ -6,7 +6,15 @@ import GroupIndicatorManager from '../utils/GroupIndicatorManager';
 import InteractionManager from '../utils/InteractionManager';
 
 
-const BarChart3D = ({barSceneData}) => {
+const BarChart3D = ({
+  barSceneData,
+  onBarHover,
+  onBarLeave,
+  onBarClick,
+  onLayerHover,
+  onLayerLeave,
+  onLayerClick
+}) => {
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
   const barManagerRef = useRef(null);
@@ -58,7 +66,15 @@ const BarChart3D = ({barSceneData}) => {
     interactionRef.current = new InteractionManager(
       camera,
       renderer.domElement,
-      barManagerRef.current
+      barManagerRef.current,
+      {
+        onBarHover,
+        onBarLeave,
+        onBarClick,
+        onLayerHover,
+        onLayerLeave,
+        onLayerClick
+      }
     );
 
     console.log('交互管理器已设置');

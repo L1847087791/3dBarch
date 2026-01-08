@@ -10,11 +10,22 @@ class InteractionManager {
    * @param {THREE.Camera} camera - Three.js 相机
    * @param {HTMLElement} domElement - 渲染器的 DOM 元素
    * @param {BarCollectionManager} barCollectionManager - 柱状图集合管理器
+   * @param {Object} callbacks - 回调函数集合
    */
-  constructor(camera, domElement, barCollectionManager) {
+  constructor(camera, domElement, barCollectionManager, callbacks = {}) {
     this.camera = camera;
     this.domElement = domElement;
     this.barCollectionManager = barCollectionManager;
+
+    // 回调函数
+    this.callbacks = {
+      onBarHover: callbacks.onBarHover || null,      // 外层悬停
+      onBarLeave: callbacks.onBarLeave || null,      // 外层离开
+      onBarClick: callbacks.onBarClick || null,      // 外层点击
+      onLayerHover: callbacks.onLayerHover || null,  // 内层悬停
+      onLayerLeave: callbacks.onLayerLeave || null,  // 内层离开
+      onLayerClick: callbacks.onLayerClick || null,  // 内层点击
+    };
 
     // 射线追踪器
     this.raycaster = new THREE.Raycaster();
@@ -61,6 +72,21 @@ class InteractionManager {
   _initEventListeners() {
     this.domElement.addEventListener('click', this._onMouseClick);
     this.domElement.addEventListener('mousemove', this._onMouseMove);
+  }
+
+  /**
+   * 获取3D坐标对应的屏幕坐标
+   * @param {Object} position3D - 3D坐标 {x, y, z}
+   * @returns {Object} 屏幕坐标 {x, y}
+   */
+  getScreenPosition(position3D) {
+    const vector = new THREE.Vector3(position3D.x, position3D.y, position3D.z);
+    vector.project(this.camera);
+    const rect = this.domElement.getBoundingClientRect();
+    return {
+      x: (vector.x * 0.5 + 0.5) * rect.width,
+      y: (-vector.y * 0.5 + 0.5) * rect.height
+    };
   }
 
   /**
@@ -137,6 +163,11 @@ class InteractionManager {
         this._resetHoverState();
         this.hoveredBarIndex = null;
         this.domElement.style.cursor = 'default';
+
+        // 触发外层离开回调
+        if (this.callbacks.onBarLeave) {
+          this.callbacks.onBarLeave();
+        }
       }
     }
   }
@@ -156,6 +187,23 @@ class InteractionManager {
 
       // 改变鼠标样式
       this.domElement.style.cursor = 'pointer';
+
+      // 触发外层悬停回调
+      if (this.callbacks.onBarHover) {
+        const bar = this.barCollectionManager.getBars()[barIndex];
+        const screenPosition = this.getScreenPosition({
+          x: bar.position.x,
+          y: bar.currentHeight,
+          z: bar.position.z
+        });
+        this.callbacks.onBarHover({
+          type: 'outer',
+          barIndex,
+          uuid: bar.uuid,
+          groupName: bar.groupName,
+          screenPosition
+        });
+      }
     }
   }
 
@@ -199,6 +247,24 @@ class InteractionManager {
         this._startLayerBlink();
 
         this.domElement.style.cursor = 'pointer';
+
+        // 触发内层悬停回调
+        if (this.callbacks.onLayerHover) {
+          const screenPosition = this.getScreenPosition({
+            x: bar.position.x,
+            y: bar.currentHeight,
+            z: bar.position.z
+          });
+          this.callbacks.onLayerHover({
+            type: 'inner',
+            barIndex: this.selectedBarIndex,
+            layerIndex,
+            barUuid: bar.uuid,
+            layerUuid: layerInfo.layerData?.uuid,
+            groupName: bar.groupName,
+            screenPosition
+          });
+        }
       }
     } else {
       // 鼠标移出所有内层
@@ -206,6 +272,11 @@ class InteractionManager {
         this._stopLayerBlink();
         this.hoveredLayerIndex = null;
         this.domElement.style.cursor = 'default';
+
+        // 触发内层离开回调
+        if (this.callbacks.onLayerLeave) {
+          this.callbacks.onLayerLeave();
+        }
       }
     }
   }
@@ -547,6 +618,16 @@ class InteractionManager {
           bar: bar
         });
 
+        // 触发外层点击回调
+        if (this.callbacks.onBarClick) {
+          this.callbacks.onBarClick({
+            type: 'bar',
+            barIndex,
+            uuid: bar.uuid,
+            groupName: bar.groupName
+          });
+        }
+
         // 选中该柱状图
         this._onBarSelected(barIndex);
       }
@@ -581,6 +662,18 @@ class InteractionManager {
             groupName: bar.groupName,
             instanceId: instanceId
           });
+
+          // 触发内层点击回调
+          if (this.callbacks.onLayerClick) {
+            this.callbacks.onLayerClick({
+              type: 'layer',
+              barIndex: this.selectedBarIndex,
+              layerIndex: layerInfo.layerIndex,
+              barUuid: bar.uuid,
+              layerUuid: layerData?.uuid,
+              groupName: bar.groupName
+            });
+          }
           return;
         }
       }
@@ -605,6 +698,16 @@ class InteractionManager {
               uuid: clickedBar.uuid,
               bar: clickedBar
             });
+
+            // 触发外层点击回调
+            if (this.callbacks.onBarClick) {
+              this.callbacks.onBarClick({
+                type: 'bar',
+                barIndex,
+                uuid: clickedBar.uuid,
+                groupName: clickedBar.groupName
+              });
+            }
 
             // 切换到新的柱状图
             this._onBarSelected(barIndex);
