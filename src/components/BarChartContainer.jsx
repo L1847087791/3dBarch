@@ -2,10 +2,142 @@ import React, { useState, useCallback } from "react";
 import BarChart3D from "./BarChart3D";
 import { v4 as uuidv4 } from 'uuid';
 import { Button, Drawer } from "antd";
+
+/**
+ * 5000主机场景配置
+ * 20个分区，每区250主机（25列×10行）
+ * 分区排列：4列×5行
+ */
+const SCENE_CONFIG = {
+  // 主机配置
+  hostsPerRegion: 250,        // 每区主机数
+  regionCols: 10,             // 每区列数
+  regionRows: 25,             // 每区行数
+  layersPerHost: 10,          // 每主机内层数
+  hostSpacing: 30,            // 主机间距
+  barWidth: 8,                // 柱状图宽度
+  barHeight: 30,              // 柱状图高度
+
+  // 分区配置
+  totalRegions: 20,           // 总分区数
+  regionsPerRow: 4,           // 每行分区数
+  regionGap: 200,             // 分区间隔（加大间距）
+};
+
+/**
+ * 生成5000主机场景数据
+ * 20个分区，每区250主机，每主机10个内层
+ */
+function generateSceneData5000() {
+  const bars = [];
+  const {
+    regionCols, regionRows, layersPerHost, hostSpacing,
+    barHeight, totalRegions, regionsPerRow, regionGap
+  } = SCENE_CONFIG;
+
+  const innerColors = ['normal', 'info', 'warning', 'error', 'critical'];
+
+  // 计算单个分区的尺寸
+  const regionWidth = regionCols * hostSpacing;
+  const regionDepth = regionRows * hostSpacing;
+
+  for (let regionIndex = 0; regionIndex < totalRegions; regionIndex++) {
+    // 计算分区在网格中的位置（4列×5行）
+    const regionCol = regionIndex % regionsPerRow;
+    const regionRow = Math.floor(regionIndex / regionsPerRow);
+
+    // 计算分区起始位置（居中布局）
+    const totalWidth = regionsPerRow * regionWidth + (regionsPerRow - 1) * regionGap;
+    const totalDepth = Math.ceil(totalRegions / regionsPerRow) * regionDepth +
+      (Math.ceil(totalRegions / regionsPerRow) - 1) * regionGap;
+
+    const regionStartX = -totalWidth / 2 + regionCol * (regionWidth + regionGap);
+    const regionStartZ = -totalDepth / 2 + regionRow * (regionDepth + regionGap);
+
+    const regionName = `区域 ${regionIndex + 1}`;
+
+    // 在分区内生成主机
+    for (let row = 0; row < regionRows; row++) {
+      for (let col = 0; col < regionCols; col++) {
+        const layers = Array.from({ length: layersPerHost }, (_, i) => ({
+          color: innerColors[i % innerColors.length],
+          uuid: uuidv4()
+        }));
+
+        bars.push({
+          position: {
+            x: regionStartX + col * hostSpacing,
+            y: 0,
+            z: regionStartZ + row * hostSpacing
+          },
+          groupName: regionName,
+          height: barHeight,
+          outerColor: 'normal',
+          uuid: uuidv4(),
+          layers
+        });
+      }
+    }
+  }
+
+  return { bars };
+}
+
+/**
+ * 生成5000主机场景的区域指示器信息
+ * 区域边框完整包裹所有主机
+ */
+function generateGroupIndicatorInfo5000() {
+  const {
+    regionCols, regionRows, hostSpacing, barWidth,
+    totalRegions, regionsPerRow, regionGap
+  } = SCENE_CONFIG;
+
+  const regions = [];
+
+  // 计算单个分区的尺寸
+  const regionWidth = regionCols * hostSpacing;
+  const regionDepth = regionRows * hostSpacing;
+
+  // 边框额外边距（确保包裹主机）
+  const padding = barWidth / 2 + 4;
+
+  for (let regionIndex = 0; regionIndex < totalRegions; regionIndex++) {
+    const regionCol = regionIndex % regionsPerRow;
+    const regionRow = Math.floor(regionIndex / regionsPerRow);
+
+    // 计算分区起始位置（与主机生成逻辑一致）
+    const totalWidth = regionsPerRow * regionWidth + (regionsPerRow - 1) * regionGap;
+    const totalDepth = Math.ceil(totalRegions / regionsPerRow) * regionDepth +
+      (Math.ceil(totalRegions / regionsPerRow) - 1) * regionGap;
+
+    const regionStartX = -totalWidth / 2 + regionCol * (regionWidth + regionGap);
+    const regionStartZ = -totalDepth / 2 + regionRow * (regionDepth + regionGap);
+
+    // 计算区域中心和尺寸（包含边距）
+    // 主机位置范围：[regionStartX, regionStartX + (regionCols-1)*hostSpacing]
+    const centerX = regionStartX + (regionCols - 1) * hostSpacing / 2;
+    const centerZ = regionStartZ + (regionRows - 1) * hostSpacing / 2;
+
+    // 区域尺寸 = 主机范围 + 两侧边距
+    const width = (regionCols - 1) * hostSpacing + padding * 2;
+    const depth = (regionRows - 1) * hostSpacing + padding * 2;
+
+    regions.push({
+      centerX,
+      centerZ,
+      width,
+      depth,
+      label: `区域 ${regionIndex + 1}`
+    });
+  }
+
+  return regions;
+}
 /**
  * 生成场景数据（模拟后端返回）
  * 统一的数据接口格式，包含位置、分组、高度、层数据
- * @returns {Object} sceneData - 场景数据
+ * 
  */
 function generateSceneData1() {
   const bars = [];
@@ -104,26 +236,26 @@ function generateGroupIndicatorInfo() {
   return [
     {
       // 第一堆：6列x5行 - 左前方
-      centerX: -100 + (5 * spacing) / 2, // x轴中心位置
-      centerZ: -100 + (4 * spacing) / 2, //z轴中心位置
+      centerX: -250 + (5 * spacing) / 2, // x轴中心位置
+      centerZ: -100 + (9 * spacing) / 2, //z轴中心位置
       width: 6 * spacing,  // x轴长度
-      depth: 5 * spacing,  // z轴长度
+      depth: 10 * spacing,  // z轴长度
       label: '数据集 A'
     },
     {
       // 第二堆：6列x5行 - 右前方
-      centerX: 100 + (5 * spacing) / 2, //x轴中心位置
-      centerZ: -100 + (4 * spacing) / 2, // z轴中心位置
+      centerX:80 + (5 * spacing) / 2, //x轴中心位置
+      centerZ: -100 + (9 * spacing) / 2, // z轴中心位置
       width: 6 * spacing,  // x轴长度
-      depth: 5 * spacing,  // z轴长度
+      depth: 10 * spacing,  // z轴长度
       label: '数据集 B'
     },
     {
       // 第三堆：5列x4行 - 后中方
-      centerX: -50 + (4 * spacing) / 2, // x轴中心位置
-      centerZ: 100 + (3 * spacing) / 2, // z轴中心位置
+      centerX: -80 + (4 * spacing) / 2, // x轴中心位置
+      centerZ: -100 + (7 * spacing) / 2, // z轴中心位置
       width: 5 * spacing,  // x轴长度
-      depth: 4 * spacing,  //z轴长度
+      depth: 8 * spacing,  //z轴长度
       label: '数据集 C'
     }
   ];
@@ -141,6 +273,7 @@ const truncateUuid = (uuid, length = 8) => {
 
 const BarChartContainer = () => {
   const [barSceneData, setBarSceneData] = useState(null);
+  const [groupIndicatorInfo, setGroupIndicatorInfo] = useState(null);
 
   // 浮层状态
   const [tooltip, setTooltip] = useState({
@@ -154,13 +287,24 @@ const BarChartContainer = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerData, setDrawerData] = useState(null);
 
+  // 获取原有测试数据
   const getBarSceneData1 = () => {
     const data = generateSceneData1();
     setBarSceneData(data);
+    setGroupIndicatorInfo(generateGroupIndicatorInfo());
   };
 
-  const getBarSceneData2 = () => {
+  // 获取5000主机测试数据
+  const getBarSceneData5000 = () => {
+    const data = generateSceneData5000();
+    setBarSceneData(data);
+    setGroupIndicatorInfo(generateGroupIndicatorInfo5000());
+  };
+
+  // 清空数据
+  const clearBarSceneData = () => {
     setBarSceneData(null);
+    setGroupIndicatorInfo(null);
     setDrawerOpen(false);
     setDrawerData(null);
   };
@@ -239,15 +383,17 @@ const BarChartContainer = () => {
   return (
     <div style={{ width: '100%', height: '100%', display: "flex", flexDirection: 'column' }}>
       {/* 控制面板 */}
-      <div style={{ height: '80px', textAlign: "center", backgroundColor: '#3C444D' }}>
-        <Button onClick={getBarSceneData1}>获取数据1</Button>
-        <Button onClick={getBarSceneData2}>清空数据</Button>
+      <div style={{ height: '80px', textAlign: "center", backgroundColor: '#3C444D', padding: '20px' }}>
+        <Button onClick={getBarSceneData1} style={{ marginRight: '10px' }}>获取数据(160主机)</Button>
+        <Button onClick={getBarSceneData5000} style={{ marginRight: '10px' }}>获取数据(5000主机)</Button>
+        <Button onClick={clearBarSceneData}>清空数据</Button>
       </div>
 
       {/* canvas画布容器 */}
       <div style={{ flex: 1, position: 'relative' }}>
         <BarChart3D
           barSceneData={barSceneData}
+          groupIndicatorInfo={groupIndicatorInfo}
           onBarHover={handleBarHover}
           onBarLeave={handleBarLeave}
           onBarClick={handleBarClick}
@@ -265,7 +411,7 @@ const BarChartContainer = () => {
               top: tooltip.y,
               transform: 'translate(-50%, -100%) translateY(-10px)',
               pointerEvents: 'none',
-              zIndex: 10,
+              zIndex: 20,
               backgroundColor: 'rgba(0, 0, 0, 0.75)',
               color: '#fff',
               padding: '8px 12px',

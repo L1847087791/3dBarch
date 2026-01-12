@@ -8,6 +8,7 @@ import InteractionManager from '../utils/InteractionManager';
 
 const BarChart3D = ({
   barSceneData,
+  groupIndicatorInfo,
   onBarHover,
   onBarLeave,
   onBarClick,
@@ -44,14 +45,13 @@ const BarChart3D = ({
     barManagerRef.current.createBars(barSceneData, 8, 5);
 
     console.log(`已创建 ${barSceneData.bars.length} 个柱状图`);
-    // console.log(barManagerRef.current.getBars())
 
-    // 创建堆指示器（边框和标签）
-    // groupIndicatorRef.current = new GroupIndicatorManager(scene);
-    // const groupsInfo = generateGroupIndicatorInfo();
-    // groupIndicatorRef.current.createAllIndicators(groupsInfo);
-
-    // console.log('已创建堆指示器（边框和标签）');
+    // 创建区域指示器（边框和标签）
+    if (groupIndicatorInfo && groupIndicatorInfo.length > 0) {
+      groupIndicatorRef.current = new GroupIndicatorManager(scene);
+      groupIndicatorRef.current.createAllIndicators(groupIndicatorInfo);
+      console.log(`已创建 ${groupIndicatorInfo.length} 个区域指示器`);
+    }
 
     // 设置相机控制
     controlsRef.current = new CameraControls(
@@ -129,7 +129,7 @@ const BarChart3D = ({
         sceneRef.current.dispose();
       }
     };
-  }, [barSceneData]);
+  }, [barSceneData, groupIndicatorInfo]);
 
   return (
     <div

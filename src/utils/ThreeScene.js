@@ -30,12 +30,12 @@ class ThreeScene {
     this.scene.add(axesHelper);
 
     //创建网格辅助器，调试场景图位置
-    const grideHelper = new THREE.GridHelper(1000,100)   //步长为1000/100=10
+    const grideHelper = new THREE.GridHelper(5000, 100)   //步长为5000/100=50
     this.scene.add(grideHelper)
 
     //添加地平面
     const groundMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(1000,1000),
+      new THREE.PlaneGeometry(5000, 5000),
       new THREE.MeshPhongMaterial({color:'gray'})
     )
       groundMesh.rotation.x = Math.PI * -0.5
@@ -48,11 +48,11 @@ class ThreeScene {
       60, // 视野角度
       width / height, // 宽高比
       1, // 近裁剪面
-      1000 // 远裁剪面
+      5000 // 远裁剪面
     );
 
-    // 设置相机初始位置，确保能看到所有柱状图
-    this.camera.position.set(44, 75, 230);
+    // 设置相机初始位置，近距离查看（初始只看到1-2个区域）
+    this.camera.position.set(138, 423, 0);
     this.camera.lookAt(0, 0, 0);
 
     // 创建渲染器
