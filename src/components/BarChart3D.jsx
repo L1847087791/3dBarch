@@ -1,12 +1,13 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import ThreeScene from '../utils/ThreeScene';
 import { BarCollectionManager } from '../utils/BarManager';
 import CameraControls from '../utils/CameraControls';
 import GroupIndicatorManager from '../utils/GroupIndicatorManager';
 import InteractionManager from '../utils/InteractionManager';
+import ViewModeManager from '../utils/ViewModeManager';
 
 
-const BarChart3D = ({
+const BarChart3D = forwardRef(({
   barSceneData,
   groupIndicatorInfo,
   onBarHover,
@@ -14,26 +15,31 @@ const BarChart3D = ({
   onBarClick,
   onLayerHover,
   onLayerLeave,
-  onLayerClick
-}) => {
+  onLayerClick,
+  onMetricHover,
+  onMetricLeave
+}, ref) => {
   const containerRef = useRef(null);
   const sceneRef = useRef(null);
   const barManagerRef = useRef(null);
+  const viewModeManagerRef = useRef(null);  // 视图模式管理器
   const controlsRef = useRef(null);
-  const groupIndicatorRef = useRef(null); // 堆指示器管理器
-  const interactionRef = useRef(null);    // 交互管理器
+  const groupIndicatorRef = useRef(null);
+  const interactionRef = useRef(null);
   const workerRef = useRef(null);
   const animationFrameRef = useRef(null);
-  const isInitializedRef = useRef(false); // 标记渲染器是否已初始化
+  const isInitializedRef = useRef(false);
 
-  // 使用 useRef 保存回调函数，避免重新创建交互管理器
+  // 使用 useRef 保存回调函数
   const callbacksRef = useRef({
     onBarHover,
     onBarLeave,
     onBarClick,
     onLayerHover,
     onLayerLeave,
-    onLayerClick
+    onLayerClick,
+    onMetricHover,
+    onMetricLeave
   });
 
   // 更新回调引用
@@ -44,9 +50,41 @@ const BarChart3D = ({
       onBarClick,
       onLayerHover,
       onLayerLeave,
-      onLayerClick
+      onLayerClick,
+      onMetricHover,
+      onMetricLeave
     };
-  }, [onBarHover, onBarLeave, onBarClick, onLayerHover, onLayerLeave, onLayerClick]);
+  }, [onBarHover, onBarLeave, onBarClick, onLayerHover, onLayerLeave, onLayerClick, onMetricHover, onMetricLeave]);
+
+  // 暴露方法给父组件
+  useImperativeHandle(ref, () => ({
+    // 切换视图模式
+    switchViewMode: (mode) => {
+      if (viewModeManagerRef.current) {
+        return viewModeManagerRef.current.switchViewMode(mode);
+      }
+      return Promise.resolve();
+    },
+    // 获取当前视图模式
+    getViewMode: () => {
+      if (viewModeManagerRef.current) {
+        return viewModeManagerRef.current.getViewMode();
+      }
+      return null;
+    },
+    // 设置指标数据（从外部传入）
+    setMetricData: (metricsArray) => {
+      if (viewModeManagerRef.current) {
+        viewModeManagerRef.current.setMetricData(metricsArray);
+      }
+    },
+    // 批量设置所有指标数据
+    setAllMetricData: (allMetrics) => {
+      if (viewModeManagerRef.current) {
+        viewModeManagerRef.current.setAllMetricData(allMetrics);
+      }
+    }
+  }), []);
 
   // 清理场景内容（不销毁渲染器）
   const clearSceneContent = useCallback(() => {
@@ -65,34 +103,36 @@ const BarChart3D = ({
       groupIndicatorRef.current = null;
     }
 
+    // 先销毁视图模式管理器
+    if (viewModeManagerRef.current) {
+      viewModeManagerRef.current.dispose();
+      viewModeManagerRef.current = null;
+    }
+
     if (barManagerRef.current) {
       barManagerRef.current.dispose();
       barManagerRef.current = null;
     }
 
-    // 清理场景中的动态内容，保留渲染器
     if (sceneRef.current) {
       sceneRef.current.clearSceneContent();
     }
   }, []);
 
-  // 第一个 useEffect：只在组件挂载时初始化渲染器，卸载时销毁
+  // 第一个 useEffect：只在组件挂载时初始化渲染器
   useEffect(() => {
     if (!containerRef.current) return;
 
     console.log('初始化 Three.js 渲染器（仅执行一次）...');
 
-    // 初始化场景和渲染器
     sceneRef.current = new ThreeScene(containerRef.current);
     isInitializedRef.current = true;
 
     console.log('渲染器已创建');
 
-    // 渲染循环
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate);
 
-      // 更新交互管理器动画（光标旋转和浮动）
       if (interactionRef.current) {
         interactionRef.current.updateCursorAnimate();
       }
@@ -105,7 +145,6 @@ const BarChart3D = ({
 
     console.log('渲染循环已启动');
 
-    // 组件卸载时的清理函数
     return () => {
       console.log('组件卸载，完全清理资源...');
 
@@ -120,7 +159,6 @@ const BarChart3D = ({
 
       clearSceneContent();
 
-      // 完全销毁渲染器（只在组件卸载时）
       if (sceneRef.current) {
         sceneRef.current.dispose();
         sceneRef.current = null;
@@ -128,7 +166,7 @@ const BarChart3D = ({
 
       isInitializedRef.current = false;
     };
-  }, []); // 空依赖数组，只在挂载/卸载时执行
+  }, []);
 
   // 第二个 useEffect：数据变化时更新场景内容
   useEffect(() => {
@@ -149,7 +187,13 @@ const BarChart3D = ({
 
     console.log(`已创建 ${barSceneData.bars.length} 个柱状图`);
 
-    // 创建区域指示器（边框和标签）
+    // 创建视图模式管理器
+    viewModeManagerRef.current = new ViewModeManager(scene, barManagerRef.current);
+    viewModeManagerRef.current.initialize();
+
+    console.log('视图模式管理器已初始化');
+
+    // 创建区域指示器
     if (groupIndicatorInfo && groupIndicatorInfo.length > 0) {
       groupIndicatorRef.current = new GroupIndicatorManager(scene);
       groupIndicatorRef.current.createAllIndicators(groupIndicatorInfo);
@@ -160,31 +204,34 @@ const BarChart3D = ({
     controlsRef.current = new CameraControls(
       camera,
       renderer.domElement,
-      { x: 0, y: 0, z: 0 } // 注视目标点
+      { x: 0, y: 0, z: 0 }
     );
 
     console.log('相机控制已设置');
 
-    // 设置交互管理器（使用 ref 中的回调）
+    // 设置交互管理器（传入 ViewModeManager）
     interactionRef.current = new InteractionManager(
       camera,
       renderer.domElement,
       barManagerRef.current,
+      viewModeManagerRef.current,  // 传入视图模式管理器
       {
         onBarHover: (...args) => callbacksRef.current.onBarHover?.(...args),
         onBarLeave: (...args) => callbacksRef.current.onBarLeave?.(...args),
         onBarClick: (...args) => callbacksRef.current.onBarClick?.(...args),
         onLayerHover: (...args) => callbacksRef.current.onLayerHover?.(...args),
         onLayerLeave: (...args) => callbacksRef.current.onLayerLeave?.(...args),
-        onLayerClick: (...args) => callbacksRef.current.onLayerClick?.(...args)
+        onLayerClick: (...args) => callbacksRef.current.onLayerClick?.(...args),
+        onMetricHover: (...args) => callbacksRef.current.onMetricHover?.(...args),
+        onMetricLeave: (...args) => callbacksRef.current.onMetricLeave?.(...args)
       }
     );
 
     console.log('交互管理器已设置');
-    return ()=>{
-        // 清理旧的场景内容
-       clearSceneContent();
-    }
+
+    return () => {
+      clearSceneContent();
+    };
 
   }, [barSceneData, groupIndicatorInfo, clearSceneContent]);
 
@@ -200,6 +247,6 @@ const BarChart3D = ({
       }}
     />
   );
-};
+});
 
 export default BarChart3D;

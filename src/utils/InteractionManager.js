@@ -1,30 +1,36 @@
 import * as THREE from 'three';
+import { ViewMode } from './ViewModeManager';
 
 /**
  * 交互管理器类
  * 负责处理3D场景中柱状图的交互事件（点击、悬停等）
  * 使用射线追踪法(Raycaster)实现物体拾取
+ * 支持组件视图和指标视图两种模式的不同交互逻辑
  */
 class InteractionManager {
   /**
    * @param {THREE.Camera} camera - Three.js 相机
    * @param {HTMLElement} domElement - 渲染器的 DOM 元素
    * @param {BarCollectionManager} barCollectionManager - 柱状图集合管理器
+   * @param {ViewModeManager} viewModeManager - 视图模式管理器（可选）
    * @param {Object} callbacks - 回调函数集合
    */
-  constructor(camera, domElement, barCollectionManager, callbacks = {}) {
+  constructor(camera, domElement, barCollectionManager, viewModeManager = null, callbacks = {}) {
     this.camera = camera;
     this.domElement = domElement;
     this.barCollectionManager = barCollectionManager;
+    this.viewModeManager = viewModeManager;
 
     // 回调函数
     this.callbacks = {
-      onBarHover: callbacks.onBarHover || null,      // 外层悬停
-      onBarLeave: callbacks.onBarLeave || null,      // 外层离开
-      onBarClick: callbacks.onBarClick || null,      // 外层点击
-      onLayerHover: callbacks.onLayerHover || null,  // 内层悬停
-      onLayerLeave: callbacks.onLayerLeave || null,  // 内层离开
-      onLayerClick: callbacks.onLayerClick || null,  // 内层点击
+      onBarHover: callbacks.onBarHover || null,
+      onBarLeave: callbacks.onBarLeave || null,
+      onBarClick: callbacks.onBarClick || null,
+      onLayerHover: callbacks.onLayerHover || null,
+      onLayerLeave: callbacks.onLayerLeave || null,
+      onLayerClick: callbacks.onLayerClick || null,
+      onMetricHover: callbacks.onMetricHover || null,
+      onMetricLeave: callbacks.onMetricLeave || null,
     };
 
     // 射线追踪器
@@ -64,6 +70,16 @@ class InteractionManager {
 
     // 初始化事件监听
     this._initEventListeners();
+  }
+
+  /**
+   * 获取当前视图模式
+   */
+  _getViewMode() {
+    if (this.viewModeManager) {
+      return this.viewModeManager.getViewMode();
+    }
+    return ViewMode.COMPONENT;
   }
 
   /**
@@ -109,6 +125,16 @@ class InteractionManager {
     // 更新射线
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
+    // 根据视图模式处理不同的交互逻辑
+    const viewMode = this._getViewMode();
+
+    if (viewMode === ViewMode.METRIC) {
+      // 指标视图：只支持外层悬停，显示指标信息
+      this._handleMetricViewHover();
+      return;
+    }
+
+    // 组件视图：原有逻辑
     // 如果有选中的柱状图，只检测内层悬停，跳过外层悬停
     if (this.selectedBarIndex !== null) {
       this._handleInnerLayerHover();
@@ -117,6 +143,76 @@ class InteractionManager {
 
     // 否则检测外层悬停
     this._handleOuterShellHover();
+  }
+
+  /**
+   * 处理指标视图下的悬停检测
+   * 只支持外层悬停，显示所有内层的高度百分比
+   */
+  _handleMetricViewHover() {
+    // 获取外壳 InstancedMesh
+    const outerShellInstancedMesh = this.barCollectionManager.getOuterShellInstancedMesh();
+    if (!outerShellInstancedMesh) return;
+
+    // 进行射线检测
+    const intersects = this.raycaster.intersectObject(outerShellInstancedMesh);
+
+    if (intersects.length > 0) {
+      const intersected = intersects[0];
+      const barIndex = intersected.instanceId;
+      const bar = this.barCollectionManager.getBars()[barIndex];
+
+      if (!bar) return;
+
+      // 如果悬停到新的柱状图
+      if (this.hoveredBarIndex !== barIndex) {
+        // 恢复之前悬停的柱状图
+        this._resetHoverState();
+
+        // 设置新的悬停状态
+        this.hoveredBarIndex = barIndex;
+        this._applyHoverState(barIndex);
+
+        // 改变鼠标样式
+        this.domElement.style.cursor = 'pointer';
+
+        // 获取指标数据（从 ViewModeManager 获取）
+        const metrics = this.viewModeManager ? this.viewModeManager.getMetricData(barIndex) : [];
+        const screenPosition = this.getScreenPosition({
+          x: bar.position.x,
+          y: bar.currentHeight,
+          z: bar.position.z
+        });
+
+        // 触发指标视图悬停回调
+        if (this.callbacks.onMetricHover) {
+          this.callbacks.onMetricHover({
+            type: 'metric',
+            barIndex,
+            uuid: bar.uuid,
+            groupName: bar.groupName,
+            metrics: metrics.map(m => ({
+              id: m.id,
+              value: m.value,
+              percent: Math.round(m.value * 100)
+            })),
+            screenPosition
+          });
+        }
+      }
+    } else {
+      // 鼠标移出所有柱状图
+      if (this.hoveredBarIndex !== null) {
+        this._resetHoverState();
+        this.hoveredBarIndex = null;
+        this.domElement.style.cursor = 'default';
+
+        // 触发指标视图离开回调
+        if (this.callbacks.onMetricLeave) {
+          this.callbacks.onMetricLeave();
+        }
+      }
+    }
   }
 
   /**
@@ -584,6 +680,15 @@ class InteractionManager {
     // 更新射线
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
+    // 根据视图模式处理不同的点击逻辑
+    const viewMode = this._getViewMode();
+
+    if (viewMode === ViewMode.METRIC) {
+      // 指标视图：不支持点击选中，直接返回
+      return;
+    }
+
+    // 组件视图：原有逻辑
     // 如果已有选中的柱状图，检测内层点击或其他柱状图点击
     if (this.selectedBarIndex !== null) {
       this._handleClickWithSelection();

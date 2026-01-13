@@ -31,13 +31,13 @@ const ColorMap = {
 const SharedMaterials = {
   // 外壳材质（透明）- 启用顶点颜色支持实例颜色
   outerShell: new THREE.MeshBasicMaterial({
-    color: 0xffffff,  // 使用白色作为基础色，让实例颜色生效
+    color: 0xffffff,
     transparent: true,
     opacity: 0.2,
   }),
   // 内层材质（Phong光照）- 启用顶点颜色支持实例颜色
   innerLayer: new THREE.MeshPhongMaterial({
-    color: 0xffffff,  // 使用白色作为基础色，让实例颜色生效
+    color: 0xffffff,
     emissive: 0x888888,
     emissiveIntensity: 0.3,
     shininess: 50
@@ -51,19 +51,12 @@ const SharedMaterials = {
 
 /**
  * 几何体缓存管理器（性能优化：避免重复创建相同几何体）
- * 使用 key 缓存不同尺寸的几何体
  */
 const GeometryCache = {
-  // 外壳几何体缓存 key: "width_height" -> geometry
   outerShellCache: new Map(),
-  // 内层几何体缓存 key: "width_height" -> geometry
   innerLayerCache: new Map(),
-  // 边框几何体缓存 key: "width_height" -> geometry
   edgesCache: new Map(),
 
-  /**
-   * 获取或创建外壳几何体
-   */
   getOuterShellGeometry(width, height) {
     const key = `${width}_${height}`;
     if (!this.outerShellCache.has(key)) {
@@ -72,9 +65,6 @@ const GeometryCache = {
     return this.outerShellCache.get(key);
   },
 
-  /**
-   * 获取或创建内层几何体
-   */
   getInnerLayerGeometry(width, height) {
     const key = `${width}_${height}`;
     if (!this.innerLayerCache.has(key)) {
@@ -83,22 +73,15 @@ const GeometryCache = {
     return this.innerLayerCache.get(key);
   },
 
-  /**
-   * 获取或创建边框几何体
-   */
   getEdgesGeometry(width, height) {
     const key = `${width}_${height}`;
     if (!this.edgesCache.has(key)) {
-      // EdgesGeometry 需要基于 BoxGeometry 创建
       const boxGeom = this.getInnerLayerGeometry(width, height);
       this.edgesCache.set(key, new THREE.EdgesGeometry(boxGeom));
     }
     return this.edgesCache.get(key);
   },
 
-  /**
-   * 清理所有缓存的几何体
-   */
   dispose() {
     this.outerShellCache.forEach(geom => geom.dispose());
     this.outerShellCache.clear();
@@ -114,120 +97,74 @@ const GeometryCache = {
  * 只管理数据，外壳和内层都由 BarCollectionManager 的 InstancedMesh 统一管理
  */
 class BarManager {
-  /**
-   * @param {THREE.Scene} scene - Three.js 场景
-   * @param {Object} position - 位置 {x, y, z}
-   * @param {number} barWidth - 柱状图宽度
-   * @param {number} initHeight - 初始高度（用于共享几何体）
-   * @param {Array} layersData - 层数据数组 [{ color: 'normal' }, ...]
-   * @param {number} barIndex - 柱状图在集合中的索引（用于交互识别）
-   * @param {string} groupName - 所属堆的名称（如 '数据集 A'）
-   * @param {number} baseLayerHeight - 统一的基准层高（由 BarCollectionManager 传入）
-   * @param {string} outerColor - 外层颜色标识（如 'normal', 'warning'）
-   * @param {string} uuid - 外层唯一标识（用于交互传参）
-   */
-  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 2, initHeight = 5, layersData = [], barIndex = 0, groupName = '', baseLayerHeight = 0.088, outerColor = 'normal', uuid = '') {
+  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 10, initHeight = 1, layersData = [], barIndex = 0, groupName = '', baseLayerHeight = 0.088, outerColor = 'normal', uuid = '') {
     this.scene = scene;
     this.position = position;
     this.barWidth = barWidth;
-    this.initHeight = initHeight;  // 初始高度（几何体基准）
-    this.currentHeight = initHeight;  // 当前外层高度
-    this.layersData = layersData;  // 层数据（包含颜色等信息）
+    this.initHeight = initHeight; //初始化高度
+    this.currentHeight = initHeight; //柱状图实际高度
+    this.layersData = layersData;
     this.layerCount = layersData.length || 0;
-    this.barIndex = barIndex;
+    this.barIndex = barIndex;  //柱状图集合索引
     this.groupName = groupName;
-    this.baseLayerHeight = baseLayerHeight;  // 统一的基准层高（几何体尺寸）
-    this.outerColor = outerColor;  // 外层颜色标识
-    this.uuid = uuid;  // 外层唯一标识（用于交互传参）
+    this.baseLayerHeight = baseLayerHeight; //基准层高
+    this.outerColor = outerColor;
+    this.uuid = uuid;
 
-    // 外壳不再作为独立 Mesh，改为 InstancedMesh 的一部分
-    // 但保留 outerShell 引用用于交互（由 BarCollectionManager 设置）
     this.outerShell = null;
-    this.outerShellInstanceId = -1;  // 外壳在 InstancedMesh 中的 ID
-
-    this.layerGap = 0;  // 固定间隙
-
-    // 内层数据（用于交互和更新，不再存储 Mesh 引用）
+    this.outerShellInstanceId = -1;
+    this.layerGap = 0;
     this.innerLayers = [];
-    // 每层在 InstancedMesh 中的 instanceId（由 BarCollectionManager 设置）
     this.layerInstanceIds = [];
 
-    // 初始化数据结构（基于 initHeight）
     this.initLayerData();
   }
 
-  /**
-   * 初始化内层数据结构（基于 initHeight 和统一的 baseLayerHeight）
-   * 每个柱状图根据自己的 layerCount 计算实际层高和 scaleY
-   */
   initLayerData() {
-    // 每个柱状图根据自己的层数计算实际的层高
     const totalGap = this.layerGap * (this.layerCount + 1);
     const availableHeight = this.initHeight - totalGap;
     const actualLayerHeight = availableHeight / this.layerCount;
-
-    // scaleY = 实际层高 / 基准层高（几何体尺寸）
     const scaleY = actualLayerHeight / this.baseLayerHeight;
 
     this.innerLayers = [];
     let currentY = this.position.y + this.layerGap;
     for (let i = 0; i < this.layerCount; i++) {
-      // 获取该层的颜色配置，默认为 'normal'
       const layerColorKey = this.layersData[i]?.color || 'normal';
-      // 获取该层的 uuid，默认使用 uuidv4() 生成
       const layerUuid = this.layersData[i]?.uuid || '';
       this.innerLayers.push({
         layerIndex: i,
         barIndex: this.barIndex,
         groupName: this.groupName,
-        baseHeight: this.baseLayerHeight,  // 统一的基准层高
-        scaleY: scaleY,  // 根据实际层数计算的 scaleY
+        baseHeight: this.baseLayerHeight,
+        scaleY: scaleY,
         positionY: currentY + actualLayerHeight / 2,
-        color: layerColorKey,  // 颜色标识
-        uuid: layerUuid  // 内层唯一标识（用于交互传参）
+        color: layerColorKey,
+        uuid: layerUuid
       });
       currentY += actualLayerHeight + this.layerGap;
     }
   }
 
-  /**
-   * 获取统一的基准层高（几何体尺寸）
-   */
   getLayerBaseHeight() {
     return this.baseLayerHeight;
   }
 
-  /**
-   * 更新外层高度，内层自适应撑满
-   * @param {number} newHeight - 新的外层高度
-   * @returns {Object} 更新后的数据 { outerScaleY, innerLayers }
-   */
   updateOuterHeight(newHeight) {
     this.currentHeight = newHeight;
-
-    // 计算外壳的 scaleY
     const outerScaleY = newHeight / this.initHeight;
-
-    // 计算内层的新高度和位置
     const totalGap = this.layerGap * (this.layerCount + 1);
     const availableHeight = newHeight - totalGap;
     const actualLayerHeight = availableHeight / this.layerCount;
-
-    // 基于 initHeight 的每层高度（几何体基准）
     const baseLayerHeight = this.getLayerBaseHeight();
 
     let currentY = this.position.y + this.layerGap;
     for (let i = 0; i < this.innerLayers.length; i++) {
-      // 内层 scaleY = 实际层高 / 基准层高
       this.innerLayers[i].scaleY = actualLayerHeight / baseLayerHeight;
       this.innerLayers[i].positionY = currentY + actualLayerHeight / 2;
       currentY += actualLayerHeight + this.layerGap;
     }
 
-    return {
-      outerScaleY,
-      innerLayers: this.innerLayers
-    };
+    return { outerScaleY, innerLayers: this.innerLayers };
   }
 
   getCurrentHeight() {
@@ -243,6 +180,7 @@ class BarManager {
 /**
  * 柱状图集合管理器
  * 使用 InstancedMesh 统一管理外壳和内层，合并边框几何体，大幅减少 Draw Call
+ * 只负责组件视图的渲染，视图模式切换由 ViewModeManager 处理
  */
 class BarCollectionManager {
   constructor(scene) {
@@ -250,42 +188,37 @@ class BarCollectionManager {
     this.bars = [];
 
     // InstancedMesh 相关
-    this.outerShellInstancedMesh = null;   // 外壳 InstancedMesh
-    this.innerLayerInstancedMesh = null;   // 内层 InstancedMesh
-    this.mergedEdgesMesh = null;           // 合并后的边框 Mesh
-    this.totalLayerCount = 0;              // 总层数
-    this.instanceIdToLayer = new Map();    // instanceId -> {barIndex, layerIndex}
+    this.outerShellInstancedMesh = null;
+    this.innerLayerInstancedMesh = null;
+    this.mergedEdgesMesh = null;
+    this.totalLayerCount = 0;
+    this.instanceIdToLayer = new Map();
 
     // 存储配置参数
     this.barWidth = 0;
-    this.initHeight = 0;  // 初始高度（几何体基准）
-    this.baseLayerHeight = 0;  // 统一的基准层高（几何体尺寸）
-    this.layerGap = 0.2;  // 层间隙
+    this.initHeight = 0;
+    this.baseLayerHeight = 0;
+    this.layerGap = 0.2;
 
-    // 用于更新矩阵的临时对象
+    // 临时对象（复用以提高性能）
     this.tempMatrix = new THREE.Matrix4();
     this.tempPosition = new THREE.Vector3();
     this.tempQuaternion = new THREE.Quaternion();
     this.tempScale = new THREE.Vector3();
-    this.tempColor = new THREE.Color();  // 用于设置实例颜色
+    this.tempColor = new THREE.Color();
 
-    // GSAP动画管理器
+    // 动画管理器
     this.animationManager = null;
   }
 
   /**
    * 创建多个柱状图
-   * @param {Object} sceneData - 场景数据 { bars: [{ position, groupName, height, layers: [] }] }
-   * @param {number} barWidth - 柱状图宽度
-   * @param {number} initHeight - 初始高度（用于共享几何体）
-   * @param {number} baseLayerCount - 基准层数（用于计算统一的几何体尺寸，默认50）
    */
-  createBars(sceneData, barWidth = 2, initHeight = 5, baseLayerCount = 50) {
+  createBars(sceneData, barWidth = 10, initHeight = 1, baseLayerCount = 10) {
     const { bars: barsData } = sceneData;
 
     this.barWidth = barWidth;
     this.initHeight = initHeight;
-    // 计算统一的基准层高（几何体尺寸基于此）
     const totalGapForBase = this.layerGap * (baseLayerCount + 1);
     this.baseLayerHeight = (initHeight - totalGapForBase) / baseLayerCount;
 
@@ -295,7 +228,7 @@ class BarCollectionManager {
       this.totalLayerCount += barData.layers?.length || 0;
     });
 
-    // 创建 BarManager 实例（纯数据）
+    // 创建 BarManager 实例
     let instanceId = 0;
     barsData.forEach((barData, index) => {
       const layersData = barData.layers || [];
@@ -305,18 +238,16 @@ class BarCollectionManager {
         barData.position,
         barWidth,
         initHeight,
-        layersData,  // 传递层数据数组
+        layersData,
         index,
         barData.groupName || '',
-        this.baseLayerHeight,  // 传入统一的基准层高
-        barData.outerColor || 'normal',  // 传入外层颜色
-        barData.uuid // 传入外层唯一标识
+        this.baseLayerHeight,
+        barData.outerColor || 'normal',
+        barData.uuid
       );
 
-      // 设置外壳的 instanceId
       bar.outerShellInstanceId = index;
 
-      // 设置每层的 instanceId
       for (let i = 0; i < layerCount; i++) {
         bar.layerInstanceIds.push(instanceId);
         this.instanceIdToLayer.set(instanceId, { barIndex: index, layerIndex: i });
@@ -326,28 +257,19 @@ class BarCollectionManager {
       this.bars.push(bar);
     });
 
-    // 创建外壳 InstancedMesh（基于 initHeight）
+    // 创建 InstancedMesh
     this._createOuterShellInstancedMesh(barsData.length);
-
-    // 创建内层 InstancedMesh（基于 initHeight）
     this._createInnerLayerInstancedMesh();
-
-    // 初始化所有实例的矩阵（初始状态，scaleY=1）
     this._updateAllInstanceMatrices();
-
-    // 初始化所有实例的颜色
     this._initializeColors();
 
     // 初始化动画管理器
     this.animationManager = new BarAnimationManager(this);
 
-    // 使用动画方式更新到目标高度，动画完成后创建边框
+    // 使用动画方式更新到目标高度
     this._initializeHeights(barsData);
   }
 
-  /**
-   * 创建外壳 InstancedMesh
-   */
   _createOuterShellInstancedMesh(count) {
     const shellGeometry = GeometryCache.getOuterShellGeometry(this.barWidth, this.initHeight);
 
@@ -356,12 +278,9 @@ class BarCollectionManager {
       SharedMaterials.outerShell,
       count
     );
-    this.outerShellInstancedMesh.userData = {
-      type: 'outerShellInstanced'
-    };
+    this.outerShellInstancedMesh.userData = { type: 'outerShellInstanced' };
     this.outerShellInstancedMesh.frustumCulled = false;
 
-    // 设置每个外壳的初始矩阵（scaleY=1，基于 initHeight）
     this.bars.forEach((bar, index) => {
       this.tempPosition.set(
         bar.position.x,
@@ -372,7 +291,6 @@ class BarCollectionManager {
       this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
       this.outerShellInstancedMesh.setMatrixAt(index, this.tempMatrix);
 
-      // 创建一个代理对象用于交互识别
       bar.outerShell = {
         userData: {
           type: 'outerShell',
@@ -380,7 +298,7 @@ class BarCollectionManager {
           groupName: bar.groupName,
           raycastEnabled: true
         },
-        scale: { x: 1, y: 1, z: 1 }  // 用于缩放状态
+        scale: { x: 1, y: 1, z: 1 }
       };
     });
 
@@ -388,12 +306,8 @@ class BarCollectionManager {
     this.scene.add(this.outerShellInstancedMesh);
   }
 
-  /**
-   * 创建内层 InstancedMesh
-   */
   _createInnerLayerInstancedMesh() {
     const innerWidth = this.barWidth * 0.9;
-    // 使用统一的基准层高
     const layerGeometry = GeometryCache.getInnerLayerGeometry(innerWidth, this.baseLayerHeight);
 
     this.innerLayerInstancedMesh = new THREE.InstancedMesh(
@@ -401,26 +315,18 @@ class BarCollectionManager {
       SharedMaterials.innerLayer,
       this.totalLayerCount
     );
-    this.innerLayerInstancedMesh.userData = {
-      type: 'innerLayerInstanced'
-    };
+    this.innerLayerInstancedMesh.userData = { type: 'innerLayerInstanced' };
     this.innerLayerInstancedMesh.frustumCulled = false;
     this.scene.add(this.innerLayerInstancedMesh);
   }
 
-  /**
-   * 创建合并边框（所有边框合并为一个 LineSegments）
-   */
   _createMergedEdges() {
     const innerWidth = this.barWidth * 0.9;
-    // 使用统一的基准层高
     const edgesGeometry = GeometryCache.getEdgesGeometry(innerWidth, this.baseLayerHeight);
 
-    // 收集所有边框几何体
     const edgesGeometries = [];
     this.bars.forEach(bar => {
       bar.innerLayers.forEach((layerData) => {
-        // 克隆并变换几何体
         const clonedGeom = edgesGeometry.clone();
         const matrix = new THREE.Matrix4();
         matrix.makeTranslation(bar.position.x, layerData.positionY, bar.position.z);
@@ -432,31 +338,23 @@ class BarCollectionManager {
       });
     });
 
-    // 合并所有边框几何体
     const mergedGeometry = mergeGeometries(edgesGeometries, false);
     this.mergedEdgesMesh = new THREE.LineSegments(mergedGeometry, SharedMaterials.edges);
     this.mergedEdgesMesh.frustumCulled = false;
     this.scene.add(this.mergedEdgesMesh);
 
-    // 清理临时几何体
     edgesGeometries.forEach(geom => geom.dispose());
   }
 
-  /**
-   * 重新生成合并边框（数据更新后调用）
-   */
   _updateMergedEdges() {
-    // 移除旧的边框
     if (this.mergedEdgesMesh) {
       this.scene.remove(this.mergedEdgesMesh);
       this.mergedEdgesMesh.geometry.dispose();
     }
 
     const innerWidth = this.barWidth * 0.9;
-    // 使用统一的基准层高
     const edgesGeometry = GeometryCache.getEdgesGeometry(innerWidth, this.baseLayerHeight);
 
-    // 收集所有边框几何体
     const edgesGeometries = [];
     this.bars.forEach(bar => {
       bar.innerLayers.forEach((layerData) => {
@@ -471,19 +369,14 @@ class BarCollectionManager {
       });
     });
 
-    // 合并所有边框几何体
     const mergedGeometry = mergeGeometries(edgesGeometries, false);
     this.mergedEdgesMesh = new THREE.LineSegments(mergedGeometry, SharedMaterials.edges);
     this.mergedEdgesMesh.frustumCulled = false;
     this.scene.add(this.mergedEdgesMesh);
 
-    // 清理临时几何体
     edgesGeometries.forEach(geom => geom.dispose());
   }
 
-  /**
-   * 更新所有实例的矩阵
-   */
   _updateAllInstanceMatrices() {
     this.bars.forEach(bar => {
       bar.innerLayers.forEach((layerData, i) => {
@@ -495,26 +388,14 @@ class BarCollectionManager {
     this.innerLayerInstancedMesh.computeBoundingSphere();
   }
 
-  /**
-   * 初始化高度（使用动画从初始高度过渡到目标高度）
-   * @param {Array} barsData - 柱状图数据数组
-   */
   _initializeHeights(barsData) {
-    // 使用动画管理器进行高度动画，动画完成后创建边框
     this.animationManager.animateHeights(barsData, {
       duration: 0.8,
-      ease: 'power2.out',
-      onComplete: () => {
-        this._createMergedEdges();
-      }
+      ease: 'power2.out'
     });
   }
 
-  /**
-   * 初始化所有实例的颜色
-   */
   _initializeColors() {
-    // 设置外壳颜色
     this.bars.forEach((bar, barIndex) => {
       const outerColorHex = ColorMap.outer[bar.outerColor] || ColorMap.outer.normal;
       this.tempColor.set(outerColorHex);
@@ -522,7 +403,6 @@ class BarCollectionManager {
     });
     this.outerShellInstancedMesh.instanceColor.needsUpdate = true;
 
-    // 设置内层颜色
     this.bars.forEach(bar => {
       bar.innerLayers.forEach((layerData, i) => {
         const instanceId = bar.layerInstanceIds[i];
@@ -534,14 +414,10 @@ class BarCollectionManager {
     this.innerLayerInstancedMesh.instanceColor.needsUpdate = true;
   }
 
-  /**
-   * 更新外壳实例的矩阵（支持高度缩放）
-   */
   _updateOuterShellMatrix(barIndex, scaleY) {
     const bar = this.bars[barIndex];
     if (!bar) return;
 
-    // 位置需要根据缩放后的高度调整
     const scaledHeight = this.initHeight * scaleY;
     this.tempPosition.set(
       bar.position.x,
@@ -551,14 +427,9 @@ class BarCollectionManager {
     this.tempScale.set(1, scaleY, 1);
     this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
     this.outerShellInstancedMesh.setMatrixAt(barIndex, this.tempMatrix);
-
-    // 更新代理对象的缩放状态
     bar.outerShell.scale.y = scaleY;
   }
 
-  /**
-   * 更新单个实例的矩阵
-   */
   _updateInstanceMatrix(instanceId, barPosition, layerData) {
     this.tempPosition.set(barPosition.x, layerData.positionY, barPosition.z);
     this.tempScale.set(1, layerData.scaleY, 1);
@@ -566,14 +437,10 @@ class BarCollectionManager {
     this.innerLayerInstancedMesh.setMatrixAt(instanceId, this.tempMatrix);
   }
 
-  /**
-   * 更新外壳实例的缩放（用于悬停交互，保持当前高度）
-   */
   _updateOuterShellScale(barIndex, scaleX, scaleZ) {
     const bar = this.bars[barIndex];
     if (!bar) return;
 
-    // 获取当前的高度缩放
     const currentHeightScaleY = bar.currentHeight / bar.initHeight;
     const scaledHeight = this.initHeight * currentHeightScaleY;
 
@@ -588,20 +455,12 @@ class BarCollectionManager {
     this.outerShellInstancedMesh.instanceMatrix.needsUpdate = true;
   }
 
-  /**
-   * 更新所有柱状图的高度（无动画，立即生效）
-   * @param {Array} heights - 每个柱状图的目标高度数组
-   */
   updateAllHeights(heights) {
     heights.forEach((height, index) => {
       if (this.bars[index]) {
         const bar = this.bars[index];
         const { outerScaleY, innerLayers } = bar.updateOuterHeight(height);
-
-        // 更新外壳矩阵
         this._updateOuterShellMatrix(index, outerScaleY);
-
-        // 更新内层矩阵
         innerLayers.forEach((layerData, i) => {
           const instanceId = bar.layerInstanceIds[i];
           this._updateInstanceMatrix(instanceId, bar.position, layerData);
@@ -612,39 +471,21 @@ class BarCollectionManager {
     this.outerShellInstancedMesh.instanceMatrix.needsUpdate = true;
     this.innerLayerInstancedMesh.instanceMatrix.needsUpdate = true;
     this.innerLayerInstancedMesh.computeBoundingSphere();
-
-    // 重新生成合并边框
     this._updateMergedEdges();
   }
 
-  /**
-   * 动画更新所有柱状图的高度
-   * @param {Array} heights - 每个柱状图的目标高度数组
-   * @param {Object} options - 动画选项 { duration, ease, onComplete }
-   * @returns {gsap.core.Tween} GSAP 动画实例
-   */
   animateAllHeights(heights, options = {}) {
-    // 转换为 barsData 格式
     const barsData = heights.map(height => ({ height }));
-
-    // 使用动画管理器
     return this.animationManager.animateHeights(barsData, {
       duration: options.duration || 0.8,
       ease: options.ease || 'power2.out',
       onComplete: () => {
-        // 动画完成后更新边框
         this._updateMergedEdges();
         if (options.onComplete) options.onComplete();
       }
     });
   }
 
-  /**
-   * 更新单个内层的颜色
-   * @param {number} barIndex - 柱状图索引
-   * @param {number} layerIndex - 层索引
-   * @param {string} colorKey - 颜色标识（如 'normal', 'warning', 'error'）
-   */
   setInnerLayerColor(barIndex, layerIndex, colorKey) {
     const bar = this.bars[barIndex];
     if (!bar || !bar.innerLayers[layerIndex]) return;
@@ -654,16 +495,9 @@ class BarCollectionManager {
     this.tempColor.set(colorHex);
     this.innerLayerInstancedMesh.setColorAt(instanceId, this.tempColor);
     this.innerLayerInstancedMesh.instanceColor.needsUpdate = true;
-
-    // 更新数据
     bar.innerLayers[layerIndex].color = colorKey;
   }
 
-  /**
-   * 更新外壳颜色
-   * @param {number} barIndex - 柱状图索引
-   * @param {string} colorKey - 颜色标识（如 'normal', 'warning', 'error'）
-   */
   setOuterShellColor(barIndex, colorKey) {
     const bar = this.bars[barIndex];
     if (!bar) return;
@@ -672,22 +506,15 @@ class BarCollectionManager {
     this.tempColor.set(colorHex);
     this.outerShellInstancedMesh.setColorAt(barIndex, this.tempColor);
     this.outerShellInstancedMesh.instanceColor.needsUpdate = true;
-
-    // 更新数据
     bar.outerColor = colorKey;
   }
 
-  /**
-   * 批量更新柱状图的颜色
-   * @param {Array} colorUpdates - 颜色更新数组 [{ barIndex, outerColor?, layers?: [{ layerIndex, color }] }]
-   */
   updateColors(colorUpdates) {
     colorUpdates.forEach(update => {
       const { barIndex, outerColor, layers } = update;
       const bar = this.bars[barIndex];
       if (!bar) return;
 
-      // 更新外壳颜色
       if (outerColor) {
         const outerColorHex = ColorMap.outer[outerColor] || ColorMap.outer.normal;
         this.tempColor.set(outerColorHex);
@@ -695,7 +522,6 @@ class BarCollectionManager {
         bar.outerColor = outerColor;
       }
 
-      // 更新内层颜色
       if (layers && Array.isArray(layers)) {
         layers.forEach(layerUpdate => {
           const { layerIndex, color } = layerUpdate;
@@ -714,23 +540,14 @@ class BarCollectionManager {
     this.innerLayerInstancedMesh.instanceColor.needsUpdate = true;
   }
 
-  /**
-   * 根据 instanceId 获取层信息
-   */
   getLayerByInstanceId(instanceId) {
     return this.instanceIdToLayer.get(instanceId);
   }
 
-  /**
-   * 获取外壳 InstancedMesh（用于射线检测）
-   */
   getOuterShellInstancedMesh() {
     return this.outerShellInstancedMesh;
   }
 
-  /**
-   * 获取内层 InstancedMesh（用于射线检测）
-   */
   getInnerLayerInstancedMesh() {
     return this.innerLayerInstancedMesh;
   }
@@ -739,35 +556,24 @@ class BarCollectionManager {
     return this.bars;
   }
 
-  /**
-   * 聚焦到指定柱状图（虚化其他柱状图）
-   * @param {number} barIndex - 要聚焦的柱状图索引
-   */
   focusOnBar(barIndex) {
     const bars = this.bars;
-    const dimFactor = 0.2; // 虚化程度：0.2 = 20% 亮度
+    const dimFactor = 0.2;
 
     bars.forEach((bar, index) => {
       if (index === barIndex) {
-        // 选中柱状图：保持原样，确保可交互
         bar.outerShell.userData.raycastEnabled = true;
         return;
       }
-
-      // 其他柱状图：降低亮度 + 禁用交互
       this._dimBar(index, dimFactor);
       bar.outerShell.userData.raycastEnabled = false;
     });
 
     this.outerShellInstancedMesh.instanceColor.needsUpdate = true;
     this.innerLayerInstancedMesh.instanceColor.needsUpdate = true;
-
     this.focusedBarIndex = barIndex;
   }
 
-  /**
-   * 取消聚焦，恢复所有柱状图
-   */
   unfocus() {
     if (this.focusedBarIndex === null && this.focusedBarIndex === undefined) return;
 
@@ -778,25 +584,17 @@ class BarCollectionManager {
 
     this.outerShellInstancedMesh.instanceColor.needsUpdate = true;
     this.innerLayerInstancedMesh.instanceColor.needsUpdate = true;
-
     this.focusedBarIndex = null;
   }
 
-  /**
-   * 降低单个柱状图亮度
-   * @param {number} barIndex - 柱状图索引
-   * @param {number} factor - 亮度因子 (0-1)
-   */
   _dimBar(barIndex, factor) {
     const bar = this.bars[barIndex];
 
-    // 外壳降低亮度
     const outerColorHex = ColorMap.outer[bar.outerColor] || ColorMap.outer.normal;
     const outerColor = new THREE.Color(outerColorHex);
     outerColor.multiplyScalar(factor);
     this.outerShellInstancedMesh.setColorAt(barIndex, outerColor);
 
-    // 内层降低亮度
     bar.layerInstanceIds.forEach((instanceId, layerIndex) => {
       const layerColorKey = bar.innerLayers[layerIndex].color;
       const innerColorHex = ColorMap.inner[layerColorKey] || ColorMap.inner.normal;
@@ -806,19 +604,13 @@ class BarCollectionManager {
     });
   }
 
-  /**
-   * 恢复单个柱状图颜色
-   * @param {number} barIndex - 柱状图索引
-   */
   _restoreBarColor(barIndex) {
     const bar = this.bars[barIndex];
 
-    // 恢复外壳颜色
     const outerColorHex = ColorMap.outer[bar.outerColor] || ColorMap.outer.normal;
     const outerColor = new THREE.Color(outerColorHex);
     this.outerShellInstancedMesh.setColorAt(barIndex, outerColor);
 
-    // 恢复内层颜色
     bar.layerInstanceIds.forEach((instanceId, layerIndex) => {
       const layerColorKey = bar.innerLayers[layerIndex].color;
       const innerColorHex = ColorMap.inner[layerColorKey] || ColorMap.inner.normal;
@@ -828,25 +620,21 @@ class BarCollectionManager {
   }
 
   dispose() {
-    // 销毁外壳 InstancedMesh
     if (this.outerShellInstancedMesh) {
       this.scene.remove(this.outerShellInstancedMesh);
       this.outerShellInstancedMesh.dispose();
     }
 
-    // 销毁内层 InstancedMesh
     if (this.innerLayerInstancedMesh) {
       this.scene.remove(this.innerLayerInstancedMesh);
       this.innerLayerInstancedMesh.dispose();
     }
 
-    // 销毁合并边框
     if (this.mergedEdgesMesh) {
       this.scene.remove(this.mergedEdgesMesh);
       this.mergedEdgesMesh.geometry.dispose();
     }
 
-    // 销毁柱状图数据
     this.bars.forEach(bar => bar.dispose());
     this.bars = [];
     this.instanceIdToLayer.clear();

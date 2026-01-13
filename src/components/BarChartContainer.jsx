@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import BarChart3D from "./BarChart3D";
 import { v4 as uuidv4 } from 'uuid';
-import { Button, Drawer } from "antd";
+import { Button, Drawer, Switch, Space } from "antd";
+import { ViewMode } from "../utils/ViewModeManager";
 
 /**
  * 5000主机场景配置
@@ -262,6 +263,27 @@ function generateGroupIndicatorInfo() {
 }
 
 /**
+ * 生成模拟指标数据（模拟后端返回）
+ * @param {number} barCount - 柱状图数量
+ * @returns {Array} 指标数据数组
+ */
+function generateMockMetricData(barCount) {
+  const metricIds = ['cpu', 'memory', 'disk', 'network', 'io'];
+  const colors = ['info', 'normal', 'warning', 'error', 'critical'];
+
+  const allMetrics = [];
+  for (let i = 0; i < barCount; i++) {
+    const metrics = metricIds.map((id, index) => ({
+      id,
+      value: 0.2 + Math.random() * 0.7,  // 20%-90% 随机值
+      color: colors[index]
+    }));
+    allMetrics.push(metrics);
+  }
+  return allMetrics;
+}
+
+/**
  * 截断UUID显示
  * @param {string} uuid - 完整UUID
  * @param {number} length - 显示长度
@@ -274,6 +296,10 @@ const truncateUuid = (uuid, length = 8) => {
 const BarChartContainer = () => {
   const [barSceneData, setBarSceneData] = useState(null);
   const [groupIndicatorInfo, setGroupIndicatorInfo] = useState(null);
+
+  // 视图模式状态
+  const [viewMode, setViewMode] = useState(ViewMode.COMPONENT);
+  const barChart3DRef = useRef(null);
 
   // 浮层状态
   const [tooltip, setTooltip] = useState({
@@ -307,7 +333,25 @@ const BarChartContainer = () => {
     setGroupIndicatorInfo(null);
     setDrawerOpen(false);
     setDrawerData(null);
+    setViewMode(ViewMode.COMPONENT);
   };
+
+  // 切换视图模式
+  const handleViewModeChange = useCallback((checked) => {
+    const newMode = checked ? ViewMode.METRIC : ViewMode.COMPONENT;
+    setViewMode(newMode);
+
+    // 如果切换到指标视图，先设置模拟数据
+    if (newMode === ViewMode.METRIC && barSceneData && barChart3DRef.current?.setAllMetricData) {
+      const mockData = generateMockMetricData(barSceneData.bars.length);
+      barChart3DRef.current.setAllMetricData(mockData);
+    }
+
+    // 通过 ref 调用 BarChart3D 的切换方法
+    if (barChart3DRef.current?.switchViewMode) {
+      barChart3DRef.current.switchViewMode(newMode);
+    }
+  }, [barSceneData]);
 
   // 外层悬停回调
   const handleBarHover = useCallback((data) => {
@@ -375,6 +419,27 @@ const BarChartContainer = () => {
     setDrawerOpen(true);
   }, []);
 
+  // 指标视图悬停回调
+  const handleMetricHover = useCallback((data) => {
+    setTooltip({
+      visible: true,
+      x: data.screenPosition.x,
+      y: data.screenPosition.y,
+      data: {
+        type: 'metric',
+        barIndex: data.barIndex,
+        uuid: data.uuid,
+        groupName: data.groupName,
+        metrics: data.metrics
+      }
+    });
+  }, []);
+
+  // 指标视图离开回调
+  const handleMetricLeave = useCallback(() => {
+    setTooltip(prev => ({ ...prev, visible: false }));
+  }, []);
+
   // 关闭抽屉
   const closeDrawer = () => {
     setDrawerOpen(false);
@@ -384,14 +449,27 @@ const BarChartContainer = () => {
     <div style={{ width: '100%', height: '100%', display: "flex", flexDirection: 'column' }}>
       {/* 控制面板 */}
       <div style={{ height: '80px', textAlign: "center", backgroundColor: '#3C444D', padding: '20px' }}>
-        <Button onClick={getBarSceneData1} style={{ marginRight: '10px' }}>获取数据(160主机)</Button>
-        <Button onClick={getBarSceneData5000} style={{ marginRight: '10px' }}>获取数据(5000主机)</Button>
-        <Button onClick={clearBarSceneData}>清空数据</Button>
+        <Space size="middle">
+          <Button onClick={getBarSceneData1}>获取数据(160主机)</Button>
+          <Button onClick={getBarSceneData5000}>获取数据(5000主机)</Button>
+          <Button onClick={clearBarSceneData}>清空数据</Button>
+          {barSceneData && (
+            <Space>
+              <span style={{ color: '#fff' }}>组件视图</span>
+              <Switch
+                checked={viewMode === ViewMode.METRIC}
+                onChange={handleViewModeChange}
+              />
+              <span style={{ color: '#fff' }}>指标视图</span>
+            </Space>
+          )}
+        </Space>
       </div>
 
       {/* canvas画布容器 */}
       <div style={{ flex: 1, position: 'relative' }}>
         <BarChart3D
+          ref={barChart3DRef}
           barSceneData={barSceneData}
           groupIndicatorInfo={groupIndicatorInfo}
           onBarHover={handleBarHover}
@@ -400,6 +478,8 @@ const BarChartContainer = () => {
           onLayerHover={handleLayerHover}
           onLayerLeave={handleLayerLeave}
           onLayerClick={handleLayerClick}
+          onMetricHover={handleMetricHover}
+          onMetricLeave={handleMetricLeave}
         />
 
         {/* 浮层 Tooltip */}
@@ -426,12 +506,24 @@ const BarChartContainer = () => {
                 <div>索引: {tooltip.data.barIndex}</div>
                 <div>UUID: {truncateUuid(tooltip.data.uuid)}</div>
               </>
-            ) : (
+            ) : tooltip.data.type === 'inner' ? (
               <>
                 <div>索引: {tooltip.data.layerIndex}</div>
                 <div>UUID: {truncateUuid(tooltip.data.layerUuid)}</div>
               </>
-            )}
+            ) : tooltip.data.type === 'metric' ? (
+              <>
+                <div><strong>主机指标</strong></div>
+                <div>UUID: {truncateUuid(tooltip.data.uuid)}</div>
+                <div style={{ marginTop: '4px', borderTop: '1px solid #555', paddingTop: '4px' }}>
+                  {tooltip.data.metrics?.map((m, i) => (
+                    <div key={i}>
+                      {m.id}: {m.percent}%
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
           </div>
         )}
       </div>
