@@ -24,6 +24,7 @@ body {
 
 /* 堆标签样式 */
 .group-label {
+  /* visibility: hidden; */
   color: white ;
   font-size: 14px ;
   font-family: 'Arial', sans-serif ;

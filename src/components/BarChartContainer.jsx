@@ -15,7 +15,7 @@ const SCENE_CONFIG = {
   regionRows: 25,             // 每区行数
   layersPerHost: 10,          // 每主机内层数
   hostSpacing: 30,            // 主机间距
-  barWidth: 8,                // 柱状图宽度
+  barWidth: 10,                // 柱状图宽度
   barHeight: 30,              // 柱状图高度
 
   // 分区配置

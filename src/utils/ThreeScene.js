@@ -14,6 +14,9 @@ class ThreeScene {
     this.labelRenderer = null; // CSS2D 渲染器
     this.lights = [];
 
+    // 绑定方法，确保 this 指向正确且引用一致
+    this.onWindowResize = this.onWindowResize.bind(this);
+
     this.init();
   }
 
@@ -77,7 +80,7 @@ class ThreeScene {
     this.setupLights();
 
     // 监听窗口大小变化
-    window.addEventListener('resize', () => this.onWindowResize());
+    window.addEventListener('resize', this.onWindowResize);
   }
 
   /**
@@ -161,16 +164,98 @@ class ThreeScene {
   }
 
   /**
-   * 清理资源
+   * 清理场景内容（保留渲染器，用于数据更新时复用）
+   * @param {Array} excludeTypes - 要保留的对象类型，如 ['AxesHelper', 'GridHelper', 'Mesh']
+   */
+  clearSceneContent(excludeTypes = ['AxesHelper', 'GridHelper']) {
+    if (!this.scene) return;
+
+    const objectsToRemove = [];
+
+    this.scene.traverse((object) => {
+      // 跳过场景本身和灯光
+      if (object === this.scene) return;
+      if (object.isLight) return;
+
+      // 跳过辅助器和地面（根据 excludeTypes）
+      if (excludeTypes.includes(object.type)) return;
+
+      // 保留地面（PlaneGeometry 的 Mesh）
+      if (object.isMesh && object.geometry && object.geometry.type === 'PlaneGeometry') {
+        return;
+      }
+
+      // 只收集顶层对象（非子对象）
+      if (object.parent === this.scene) {
+        objectsToRemove.push(object);
+      }
+    });
+
+    // 移除并清理对象
+    objectsToRemove.forEach((object) => {
+      this.disposeObject(object);
+      this.scene.remove(object);
+    });
+  }
+
+  /**
+   * 递归清理单个对象及其子对象的资源
+   */
+  disposeObject(object) {
+    // 先递归清理子对象
+    if (object.children && object.children.length > 0) {
+      // 复制数组避免遍历时修改
+      [...object.children].forEach(child => {
+        this.disposeObject(child);
+      });
+    }
+
+    // 清理几何体
+    if (object.geometry) {
+      object.geometry.dispose();
+    }
+
+    // 清理材质
+    if (object.material) {
+      if (Array.isArray(object.material)) {
+        object.material.forEach(material => {
+          this.disposeMaterial(material);
+        });
+      } else {
+        this.disposeMaterial(object.material);
+      }
+    }
+  }
+
+  /**
+   * 清理材质及其纹理
+   */
+  disposeMaterial(material) {
+    if (material.map) material.map.dispose();
+    if (material.lightMap) material.lightMap.dispose();
+    if (material.bumpMap) material.bumpMap.dispose();
+    if (material.normalMap) material.normalMap.dispose();
+    if (material.specularMap) material.specularMap.dispose();
+    if (material.envMap) material.envMap.dispose();
+    material.dispose();
+  }
+
+  /**
+   * 清理资源（完全销毁，包括渲染器）
    */
   dispose() {
     window.removeEventListener('resize', this.onWindowResize);
 
+    // 先清理场景内容
+    this.clearSceneContent([]);
+
     if (this.renderer) {
       this.renderer.dispose();
+      this.renderer.forceContextLoss(); // 强制释放 WebGL 上下文
       if (this.container && this.renderer.domElement) {
         this.container.removeChild(this.renderer.domElement);
       }
+      this.renderer = null;
     }
 
     // 清理 CSS2D 渲染器
@@ -178,29 +263,11 @@ class ThreeScene {
       if (this.container && this.labelRenderer.domElement.parentNode === this.container) {
         this.container.removeChild(this.labelRenderer.domElement);
       }
+      this.labelRenderer = null;
     }
 
-    // 清理场景中的所有对象
-    if (this.scene) {
-      this.scene.traverse((object) => {
-        if(object.axesHelper){
-          object.axesHelper.dispose()
-        }
-        if(object.grideHelper){
-          object.grideHelper.dispose()
-        }
-        if (object.geometry) {
-          object.geometry.dispose();
-        }
-        if (object.material) {
-          if (Array.isArray(object.material)) {
-            object.material.forEach(material => material.dispose());
-          } else {
-            object.material.dispose();
-          }
-        }
-      });
-    }
+    this.scene = null;
+    this.camera = null;
   }
 }
 

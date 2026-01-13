@@ -80,18 +80,8 @@ class GroupIndicatorManager {
    */
   createTextLabel(text, x, y, z) {
     const labelDiv = document.createElement('div');
-    labelDiv.className = 'group-label';
+    labelDiv.className = 'group-label'; //标签样式在根目录的index.css中定义
     labelDiv.textContent = text;
-    labelDiv.style.cssText = `
-      color: #ffffff;
-      font-size: 14px;
-      font-weight: bold;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 4px 12px;
-      border-radius: 4px;
-      white-space: nowrap;
-    `;
-
     const label = new CSS2DObject(labelDiv);
     label.position.set(x, y, z);
     this.scene.add(label);
