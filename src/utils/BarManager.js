@@ -97,7 +97,7 @@ const GeometryCache = {
  * 只管理数据，外壳和内层都由 BarCollectionManager 的 InstancedMesh 统一管理
  */
 class BarManager {
-  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 10, initHeight = 1, layersData = [], barIndex = 0, groupName = '', baseLayerHeight = 0.088, outerColor = 'normal', uuid = '') {
+  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 10, initHeight = 1, layersData = [], barIndex = 0, groupName = '', baseLayerHeight = 0.088, outerColor = 'normal', uuid = '', layerGap = 0) {
     this.scene = scene;
     this.position = position;
     this.barWidth = barWidth;
@@ -111,12 +111,11 @@ class BarManager {
     this.outerColor = outerColor;
     this.uuid = uuid;
 
-    this.outerShell = null;
-    this.outerShellInstanceId = -1;
-    this.layerGap = 0;
-    this.innerLayers = [];
-    this.layerInstanceIds = [];
-
+    this.outerShell = null; //外层用于交互
+    this.outerShellInstanceId = -1; //外层在InstancedMesh中的ID
+    this.innerLayers = []; //内层数据，用于交互
+    this.layerInstanceIds = []; //内层的InstancedMesh中的ID
+    this.layerGap = layerGap; //内层间隙，由BarCollectionManager控制
     this.initLayerData();
   }
 
@@ -198,7 +197,7 @@ class BarCollectionManager {
     this.barWidth = 0;
     this.initHeight = 0;
     this.baseLayerHeight = 0;
-    this.layerGap = 0.2;
+    this.layerGap = 0.1;  //内层间隙
 
     // 临时对象（复用以提高性能）
     this.tempMatrix = new THREE.Matrix4();
@@ -243,7 +242,8 @@ class BarCollectionManager {
         barData.groupName || '',
         this.baseLayerHeight,
         barData.outerColor || 'normal',
-        barData.uuid
+        barData.uuid,
+        this.layerGap
       );
 
       bar.outerShellInstanceId = index;
@@ -257,9 +257,10 @@ class BarCollectionManager {
       this.bars.push(bar);
     });
 
-    // 创建 InstancedMesh
+    // 初始化创建 InstancedMesh
     this._createOuterShellInstancedMesh(barsData.length);
     this._createInnerLayerInstancedMesh();
+    //初始化所有实例的矩阵
     this._updateAllInstanceMatrices();
     this._initializeColors();
 
@@ -387,11 +388,14 @@ class BarCollectionManager {
     this.innerLayerInstancedMesh.instanceMatrix.needsUpdate = true;
     this.innerLayerInstancedMesh.computeBoundingSphere();
   }
-
+ 
   _initializeHeights(barsData) {
     this.animationManager.animateHeights(barsData, {
       duration: 0.8,
-      ease: 'power2.out'
+      ease: 'power2.out',
+      //   onComplete: () => {
+      //   this._createMergedEdges();
+      // }
     });
   }
 

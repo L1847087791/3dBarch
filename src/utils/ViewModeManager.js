@@ -44,7 +44,10 @@ class ViewModeManager {
 
     // 指标视图参数
     this.metricLayerWidth = 0;
+    this.metricLayerDepth = 0;
     this.metricBaseHeight = 1;
+    this.metricColumns = 2;
+    this.metricRows = 0;
 
     // 临时对象（复用以提高性能）
     this.tempMatrix = new THREE.Matrix4();
@@ -86,7 +89,10 @@ class ViewModeManager {
   _initMetricViewParams() {
     const barWidth = this.barManager.barWidth;
     const totalInnerWidth = barWidth * 0.9;
-    this.metricLayerWidth = totalInnerWidth / MetricViewConfig.layerCount;
+    const totalInnerDepth = barWidth * 0.9;
+    this.metricRows = Math.ceil(MetricViewConfig.layerCount / this.metricColumns);
+    this.metricLayerWidth = totalInnerWidth / this.metricColumns;
+    this.metricLayerDepth = totalInnerDepth / this.metricRows;
     this.metricBaseHeight = 1;
   }
 
@@ -102,7 +108,7 @@ class ViewModeManager {
     const metricGeometry = new THREE.BoxGeometry(
       this.metricLayerWidth,
       this.metricBaseHeight,
-      barWidth * 0.9
+      this.metricLayerDepth
     );
 
     // 创建材质（克隆共享材质）
@@ -344,9 +350,6 @@ class ViewModeManager {
    */
   _captureMetricViewState() {
     const states = [];
-    const barWidth = this.barManager.barWidth;
-    const totalInnerWidth = barWidth * 0.9;
-    const startOffset = -totalInnerWidth / 2 + this.metricLayerWidth / 2;
 
     this.barManager.bars.forEach((bar, barIndex) => {
       const barStates = [];
@@ -357,12 +360,12 @@ class ViewModeManager {
         const heightPercent = metric.value;
         const actualHeight = bar.currentHeight * heightPercent;
         const scaleY = actualHeight / this.metricBaseHeight;
-        const offsetX = startOffset + i * this.metricLayerWidth;
+        const { offsetX, offsetZ } = this._getMetricLayoutOffset(i);
 
         barStates.push({
           positionX: bar.position.x + offsetX,
           positionY: bar.position.y + actualHeight / 2,
-          positionZ: bar.position.z,
+          positionZ: bar.position.z + offsetZ,
           scaleY: scaleY
         });
       }
@@ -433,9 +436,6 @@ class ViewModeManager {
    */
   _updateAllMetricLayerMatrices() {
     let instanceId = 0;
-    const barWidth = this.barManager.barWidth;
-    const totalInnerWidth = barWidth * 0.9;
-    const startOffset = -totalInnerWidth / 2 + this.metricLayerWidth / 2;
 
     this.barManager.bars.forEach((bar, barIndex) => {
       const metrics = this.metricData.get(barIndex) || [];
@@ -445,12 +445,12 @@ class ViewModeManager {
         const heightPercent = metric.value;
         const actualHeight = bar.currentHeight * heightPercent;
         const scaleY = actualHeight / this.metricBaseHeight;
-        const offsetX = startOffset + i * this.metricLayerWidth;
+        const { offsetX, offsetZ } = this._getMetricLayoutOffset(i);
 
         this.tempPosition.set(
           bar.position.x + offsetX,
           bar.position.y + actualHeight / 2,
-          bar.position.z
+          bar.position.z + offsetZ
         );
         this.tempScale.set(1, scaleY, 1);
         this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
@@ -467,6 +467,21 @@ class ViewModeManager {
 
     this.metricLayerInstancedMesh.instanceMatrix.needsUpdate = true;
     this.metricLayerInstancedMesh.instanceColor.needsUpdate = true;
+  }
+
+  _getMetricLayoutOffset(metricIndex) {
+    const barWidth = this.barManager.barWidth;
+    const totalInnerWidth = barWidth * 0.9;
+    const totalInnerDepth = barWidth * 0.9;
+    const startX = -totalInnerWidth / 2 + this.metricLayerWidth / 2;
+    const startZ = -totalInnerDepth / 2 + this.metricLayerDepth / 2;
+    const col = metricIndex % this.metricColumns;
+    const row = Math.floor(metricIndex / this.metricColumns);
+
+    return {
+      offsetX: startX + col * this.metricLayerWidth,
+      offsetZ: startZ + row * this.metricLayerDepth
+    };
   }
 
   /**
