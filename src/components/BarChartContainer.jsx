@@ -41,7 +41,7 @@ function generateSceneData5000() {
     barHeight, totalRegions, regionsPerRow, regionGap
   } = SCENE_CONFIG;
 
-  const innerColors = ['normal', 'info', 'warning', 'error', 'critical'];
+  const innerColors = [0, 1, 2, 3];
 
   // 计算单个分区的尺寸
   const regionWidth = regionCols * hostSpacing;
@@ -150,8 +150,7 @@ function generateSceneData1() {
   const spacing = 20;
 
   // 定义颜色列表用于演示
-  const innerColors = ['normal', 'info', 'warning', 'error', 'critical'];
-  const outerColors = ['normal', 'active', 'warning', 'error', 'offline', 'maintenance'];
+  const innerColors = [0, 1, 2, 3];
 
   // 第一堆：60个 (6x10) - 左前方 - 每个柱状图递增层数
   const group1Rows = 10;
@@ -267,11 +266,6 @@ function generateGroupIndicatorInfo() {
   ];
 }
 
-/**
- * 生成模拟指标数据（模拟后端返回）
- * @param {number} barCount - 柱状图数量
- * @returns {Array} 指标数据数组
- */
 /**
  * 截断UUID显示
  * @param {string} uuid - 完整UUID

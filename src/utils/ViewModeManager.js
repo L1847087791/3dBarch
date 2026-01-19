@@ -15,7 +15,7 @@ export const ViewMode = {
 export const MetricViewConfig = {
   layerCount: 5,           // 指标视图固定5层
   defaultMetricIds: ['cpu', 'memory', 'disk', 'network', 'io'],
-  defaultColors: ['info', 'normal', 'warning', 'error', 'critical']
+  defaultColors: ['metric1', 'metric2', 'metric3', 'metric4', 'metric5']
 };
 
 /**
@@ -58,13 +58,13 @@ class ViewModeManager {
     this.tempScale = new THREE.Vector3();
     this.tempColor = new THREE.Color();
 
-    // 颜色映射（从 BarManager 获取或定义）
+    // 颜色映射（指标区分颜色，非告警含义）
     this.colorMap = {
-      normal: '#EDF2FA',
-      info: '#4A90D9',
-      warning: '#F5A623',
-      error: '#D0021B',
-      critical: '#8B0000'
+      metric1: '#EDF2FA',
+      metric2: '#4A90D9',
+      metric3: '#F5A623',
+      metric4: '#D0021B',
+      metric5: '#8B0000'
     };
 
     // 回调
@@ -483,7 +483,7 @@ class ViewModeManager {
       const metrics = this.metricData.get(barIndex) || [];
 
       for (let i = 0; i < MetricViewConfig.layerCount; i++) {
-        const metric = metrics[i] || { value: 0, color: 'normal' };
+        const metric = metrics[i] || { value: 0, color: 'metric1' };
         const heightPercent = metric.value;
         const actualHeight = bar.currentHeight * heightPercent;
         const scaleY = actualHeight / this.metricBaseHeight;
@@ -499,7 +499,7 @@ class ViewModeManager {
         this.metricLayerInstancedMesh.setMatrixAt(instanceId, this.tempMatrix);
 
         // 设置颜色
-        const colorHex = this.colorMap[metric.color] || this.colorMap.normal;
+        const colorHex = this.colorMap[metric.color] || this.colorMap.metric1;
         this.tempColor.set(colorHex);
         this.metricLayerInstancedMesh.setColorAt(instanceId, this.tempColor);
 
@@ -580,8 +580,8 @@ class ViewModeManager {
       const metrics = metricsByBar[barIndex] || [];
 
       for (let i = 0; i < MetricViewConfig.layerCount; i++) {
-        const metric = metrics[i] || { color: 'normal' };
-        const colorHex = this.colorMap[metric.color] || this.colorMap.normal;
+        const metric = metrics[i] || { color: 'metric1' };
+        const colorHex = this.colorMap[metric.color] || this.colorMap.metric1;
         this.tempColor.set(colorHex);
         this.metricLayerInstancedMesh.setColorAt(instanceId, this.tempColor);
         instanceId++;

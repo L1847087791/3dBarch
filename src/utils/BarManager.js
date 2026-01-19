@@ -3,25 +3,19 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import BarAnimationManager from './BarAnimationManager';
 
 /**
- * 颜色映射表（告警级别）
+ * 颜色映射表
  */
 const ColorMap = {
-  // 内层颜色（告警级别）
+  // 内层颜色（告警级别：0-3）
   inner: {
-    normal: '#EDF2FA',    // 正常 - 白色
-    info: '#4A90D9',      // 信息 - 蓝色
-    warning: '#F5A623',   // 警告 - 黄色
-    error: '#D0021B',     // 错误 - 红色
-    critical: '#8B0000',  // 严重 - 深红色
+    0: '#EDF2FA',    // 正常
+    1: '#ffcd3d',    // 次要
+    2: '#ff8c3d',    // 主要
+    3: '#d9001b',    // 严重
   },
-  // 外层颜色（系统状态）
+  // 外层颜色（固定为normal）
   outer: {
-    normal: '#EDF2FA',    // 正常
-    active: '#4A90D9',    // 活跃
-    warning: '#F5A623',   // 警告
-    error: '#D0021B',     // 错误
-    offline: '#808080',   // 离线
-    maintenance: '#9B59B6' // 维护
+    normal: '#EDF2FA',    // 正常（固定）
   }
 };
 
@@ -410,7 +404,7 @@ class BarCollectionManager {
     this.bars.forEach(bar => {
       bar.innerLayers.forEach((layerData, i) => {
         const instanceId = bar.layerInstanceIds[i];
-        const innerColorHex = ColorMap.inner[layerData.color] || ColorMap.inner.normal;
+        const innerColorHex = ColorMap.inner[layerData.color] || ColorMap.inner[0];
         this.tempColor.set(innerColorHex);
         this.innerLayerInstancedMesh.setColorAt(instanceId, this.tempColor);
       });
@@ -495,7 +489,7 @@ class BarCollectionManager {
     if (!bar || !bar.innerLayers[layerIndex]) return;
 
     const instanceId = bar.layerInstanceIds[layerIndex];
-    const colorHex = ColorMap.inner[colorKey] || ColorMap.inner.normal;
+    const colorHex = ColorMap.inner[colorKey] || ColorMap.inner[0];
     this.tempColor.set(colorHex);
     this.innerLayerInstancedMesh.setColorAt(instanceId, this.tempColor);
     this.innerLayerInstancedMesh.instanceColor.needsUpdate = true;
@@ -531,7 +525,7 @@ class BarCollectionManager {
           const { layerIndex, color } = layerUpdate;
           if (bar.innerLayers[layerIndex]) {
             const instanceId = bar.layerInstanceIds[layerIndex];
-            const innerColorHex = ColorMap.inner[color] || ColorMap.inner.normal;
+            const innerColorHex = ColorMap.inner[color] || ColorMap.inner[0];
             this.tempColor.set(innerColorHex);
             this.innerLayerInstancedMesh.setColorAt(instanceId, this.tempColor);
             bar.innerLayers[layerIndex].color = color;
