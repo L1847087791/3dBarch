@@ -48,6 +48,8 @@ class ViewModeManager {
     this.metricBaseHeight = 1;
     this.metricColumns = 2;
     this.metricRows = 0;
+    this.metricOffsets = [];
+    this.metricUpdateTween = null;
 
     // 临时对象（复用以提高性能）
     this.tempMatrix = new THREE.Matrix4();
@@ -94,6 +96,38 @@ class ViewModeManager {
     this.metricLayerWidth = totalInnerWidth / this.metricColumns;
     this.metricLayerDepth = totalInnerDepth / this.metricRows;
     this.metricBaseHeight = 1;
+    this._refreshMetricOffsets();
+  }
+
+  _refreshMetricOffsets() {
+    this.metricOffsets = [];
+    for (let i = 0; i < MetricViewConfig.layerCount; i++) {
+      this.metricOffsets.push(this._getMetricLayoutOffset(i));
+    }
+  }
+
+  _normalizeMetrics(metrics) {
+    return MetricViewConfig.defaultMetricIds.map((id, i) => {
+      const metric = metrics[i] || {};
+      return {
+        id: metric.id || id,
+        value: typeof metric.value === 'number' ? Math.max(0, Math.min(1, metric.value)) : 0,
+        color: metric.color || MetricViewConfig.defaultColors[i]
+      };
+    });
+  }
+
+  _applyAllMetricData(allMetrics) {
+    const normalizedByBar = [];
+
+    this.barManager.bars.forEach((bar, barIndex) => {
+      const metrics = Array.isArray(allMetrics?.[barIndex]) ? allMetrics[barIndex] : [];
+      const normalized = this._normalizeMetrics(metrics);
+      this.metricData.set(barIndex, normalized);
+      normalizedByBar[barIndex] = normalized;
+    });
+
+    return normalizedByBar;
   }
 
   /**
@@ -102,7 +136,6 @@ class ViewModeManager {
   _createMetricLayerInstancedMesh() {
     const barCount = this.barManager.bars.length;
     const metricLayerCount = barCount * MetricViewConfig.layerCount;
-    const barWidth = this.barManager.barWidth;
 
     // 创建几何体
     const metricGeometry = new THREE.BoxGeometry(
@@ -184,24 +217,33 @@ class ViewModeManager {
    */
   setAllMetricData(allMetrics) {
     if (!Array.isArray(allMetrics)) return;
-
-    allMetrics.forEach((metrics, barIndex) => {
-      if (barIndex < this.barManager.bars.length && Array.isArray(metrics)) {
-        const normalizedMetrics = MetricViewConfig.defaultMetricIds.map((id, i) => {
-          const metric = metrics[i] || {};
-          return {
-            id: metric.id || id,
-            value: typeof metric.value === 'number' ? Math.max(0, Math.min(1, metric.value)) : 0,
-            color: metric.color || MetricViewConfig.defaultColors[i]
-          };
-        });
-        this.metricData.set(barIndex, normalizedMetrics);
-      }
-    });
+    this._applyAllMetricData(allMetrics);
 
     if (this.viewMode === ViewMode.METRIC && !this.isTransitioning) {
       this._updateAllMetricLayerMatrices();
     }
+  }
+
+  setAllMetricDataAnimated(allMetrics, options = {}) {
+    if (!Array.isArray(allMetrics)) return;
+
+    const {
+      duration = 0.6,
+      ease = 'power2.out'
+    } = options;
+
+    const fromMetrics = [];
+    this.barManager.bars.forEach((bar, barIndex) => {
+      fromMetrics[barIndex] = this.metricData.get(barIndex) || [];
+    });
+
+    const toMetrics = this._applyAllMetricData(allMetrics);
+
+    if (this.viewMode !== ViewMode.METRIC || this.isTransitioning) {
+      return;
+    }
+
+    this._animateMetricLayerMatrices(fromMetrics, toMetrics, { duration, ease });
   }
 
   /**
@@ -469,7 +511,91 @@ class ViewModeManager {
     this.metricLayerInstancedMesh.instanceColor.needsUpdate = true;
   }
 
+  _animateMetricLayerMatrices(fromMetrics, toMetrics, options = {}) {
+    const { duration, ease } = options;
+
+    if (this.metricUpdateTween) {
+      this.metricUpdateTween.kill();
+    }
+
+    this._updateMetricLayerColors(toMetrics);
+
+    const fromValues = [];
+    const toValues = [];
+    let instanceId = 0;
+
+    this.barManager.bars.forEach((bar, barIndex) => {
+      const fromBarMetrics = fromMetrics[barIndex] || [];
+      const toBarMetrics = toMetrics[barIndex] || [];
+
+      for (let i = 0; i < MetricViewConfig.layerCount; i++) {
+        fromValues[instanceId] = fromBarMetrics[i]?.value ?? 0;
+        toValues[instanceId] = toBarMetrics[i]?.value ?? 0;
+        instanceId++;
+      }
+    });
+
+    const offsets = this.metricOffsets.length ? this.metricOffsets : null;
+    const proxy = { progress: 0 };
+
+    this.metricUpdateTween = gsap.to(proxy, {
+      progress: 1,
+      duration,
+      ease,
+      onUpdate: () => {
+        let updateId = 0;
+
+        this.barManager.bars.forEach((bar) => {
+          for (let i = 0; i < MetricViewConfig.layerCount; i++) {
+            const offset = offsets ? offsets[i] : this._getMetricLayoutOffset(i);
+            const value = fromValues[updateId] + (toValues[updateId] - fromValues[updateId]) * proxy.progress;
+            const actualHeight = bar.currentHeight * value;
+            const scaleY = actualHeight / this.metricBaseHeight;
+
+            this.tempPosition.set(
+              bar.position.x + offset.offsetX,
+              bar.position.y + actualHeight / 2,
+              bar.position.z + offset.offsetZ
+            );
+            this.tempScale.set(1, Math.max(0.01, scaleY), 1);
+            this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+            this.metricLayerInstancedMesh.setMatrixAt(updateId, this.tempMatrix);
+
+            updateId++;
+          }
+        });
+
+        this.metricLayerInstancedMesh.instanceMatrix.needsUpdate = true;
+      },
+      onComplete: () => {
+        this._updateAllMetricLayerMatrices();
+      }
+    });
+  }
+
+  _updateMetricLayerColors(metricsByBar) {
+    let instanceId = 0;
+
+    this.barManager.bars.forEach((bar, barIndex) => {
+      const metrics = metricsByBar[barIndex] || [];
+
+      for (let i = 0; i < MetricViewConfig.layerCount; i++) {
+        const metric = metrics[i] || { color: 'normal' };
+        const colorHex = this.colorMap[metric.color] || this.colorMap.normal;
+        this.tempColor.set(colorHex);
+        this.metricLayerInstancedMesh.setColorAt(instanceId, this.tempColor);
+        instanceId++;
+      }
+    });
+
+    this.metricLayerInstancedMesh.instanceColor.needsUpdate = true;
+  }
+
   _getMetricLayoutOffset(metricIndex) {
+    if (this.metricOffsets?.[metricIndex]) {
+      return this.metricOffsets[metricIndex];
+    }
+
     const barWidth = this.barManager.barWidth;
     const totalInnerWidth = barWidth * 0.9;
     const totalInnerDepth = barWidth * 0.9;
@@ -509,6 +635,11 @@ class ViewModeManager {
    * 销毁
    */
   dispose() {
+    if (this.metricUpdateTween) {
+      this.metricUpdateTween.kill();
+      this.metricUpdateTween = null;
+    }
+
     if (this.metricLayerInstancedMesh) {
       this.scene.remove(this.metricLayerInstancedMesh);
       this.metricLayerInstancedMesh.geometry.dispose();

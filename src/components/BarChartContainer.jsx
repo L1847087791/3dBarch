@@ -1,8 +1,13 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import BarChart3D from "./BarChart3D";
 import { v4 as uuidv4 } from 'uuid';
 import { Button, Drawer, Switch, Space } from "antd";
-import { ViewMode } from "../utils/ViewModeManager";
+import { MetricViewConfig, ViewMode } from "../utils/ViewModeManager";
+
+const METRIC_UPDATE_INTERVAL_MS = 1500;
+const METRIC_ANIMATION_DURATION = 0.6;
+const METRIC_ANIMATION_EASE = 'power2.out';
+const METRIC_REQUEST_LATENCY_MS = 200;
 
 /**
  * 5000主机场景配置
@@ -267,22 +272,6 @@ function generateGroupIndicatorInfo() {
  * @param {number} barCount - 柱状图数量
  * @returns {Array} 指标数据数组
  */
-function generateMockMetricData(barCount) {
-  const metricIds = ['cpu', 'memory', 'disk', 'network', 'io'];
-  const colors = ['info', 'normal', 'warning', 'error', 'critical'];
-
-  const allMetrics = [];
-  for (let i = 0; i < barCount; i++) {
-    const metrics = metricIds.map((id, index) => ({
-      id,
-      value: 0.2 + Math.random() * 0.7,  // 20%-90% 随机值
-      color: colors[index]
-    }));
-    allMetrics.push(metrics);
-  }
-  return allMetrics;
-}
-
 /**
  * 截断UUID显示
  * @param {string} uuid - 完整UUID
@@ -300,6 +289,13 @@ const BarChartContainer = () => {
   // 视图模式状态
   const [viewMode, setViewMode] = useState(ViewMode.COMPONENT);
   const barChart3DRef = useRef(null);
+  const viewTransitioningRef = useRef(false);
+  const metricPollingRef = useRef({
+    timer: null,
+    inFlight: false,
+    active: false,
+    barCount: 0
+  });
 
   // 浮层状态
   const [tooltip, setTooltip] = useState({
@@ -336,22 +332,124 @@ const BarChartContainer = () => {
     setViewMode(ViewMode.COMPONENT);
   };
 
+  const stopMetricPolling = useCallback(() => {
+    metricPollingRef.current.active = false;
+    if (metricPollingRef.current.timer) {
+      clearTimeout(metricPollingRef.current.timer);
+    }
+    metricPollingRef.current.timer = null;
+    metricPollingRef.current.inFlight = false;
+    metricPollingRef.current.barCount = 0;
+  }, []);
+
+  const generateMockMetricData = useCallback((barCount) => {
+    const metricIds = MetricViewConfig.defaultMetricIds;
+    const colors = MetricViewConfig.defaultColors;
+    const allMetrics = new Array(barCount);
+
+    for (let i = 0; i < barCount; i++) {
+      const metrics = metricIds.map((id, index) => ({
+        id,
+        value: Math.random(),
+        color: colors[index]
+      }));
+      allMetrics[i] = metrics;
+    }
+
+    return allMetrics;
+  }, []);
+
+  const fetchMockMetricData = useCallback((barCount) => {
+    return new Promise((resolve) => {
+      const data = generateMockMetricData(barCount);
+      setTimeout(() => resolve(data), METRIC_REQUEST_LATENCY_MS);
+    });
+  }, [generateMockMetricData]);
+
+  const startMetricPolling = useCallback((barCount) => {
+    if (!barCount) return;
+    stopMetricPolling();
+    metricPollingRef.current.active = true;
+    metricPollingRef.current.barCount = barCount;
+
+    const poll = async () => {
+      if (!metricPollingRef.current.active || metricPollingRef.current.inFlight) {
+        return;
+      }
+
+      metricPollingRef.current.inFlight = true;
+
+      try {
+        const payload = await fetchMockMetricData(barCount);
+        if (metricPollingRef.current.active && barChart3DRef.current?.setAllMetricDataAnimated) {
+          barChart3DRef.current.setAllMetricDataAnimated(payload, {
+            duration: METRIC_ANIMATION_DURATION,
+            ease: METRIC_ANIMATION_EASE
+          });
+        }
+      } finally {
+        metricPollingRef.current.inFlight = false;
+        if (metricPollingRef.current.active) {
+          metricPollingRef.current.timer = setTimeout(poll, METRIC_UPDATE_INTERVAL_MS);
+        }
+      }
+    };
+
+    poll();
+  }, [fetchMockMetricData, stopMetricPolling]);
+
+  useEffect(() => {
+    if (viewMode !== ViewMode.METRIC || !barSceneData?.bars?.length || viewTransitioningRef.current) {
+      stopMetricPolling();
+      return stopMetricPolling;
+    }
+
+    const barCount = barSceneData.bars.length;
+    if (!metricPollingRef.current.active || metricPollingRef.current.barCount !== barCount) {
+      startMetricPolling(barCount);
+    }
+    return ()=>{
+      stopMetricPolling()
+    }
+  }, [viewMode, barSceneData, startMetricPolling, stopMetricPolling]);
+
   // 切换视图模式
   const handleViewModeChange = useCallback((checked) => {
     const newMode = checked ? ViewMode.METRIC : ViewMode.COMPONENT;
     setViewMode(newMode);
 
-    // 如果切换到指标视图，先设置模拟数据
-    if (newMode === ViewMode.METRIC && barSceneData && barChart3DRef.current?.setAllMetricData) {
-      const mockData = generateMockMetricData(barSceneData.bars.length);
-      barChart3DRef.current.setAllMetricData(mockData);
+    //数据不存在时的防护清理处理
+    if (!barChart3DRef.current?.switchViewMode) {
+      if (newMode !== ViewMode.METRIC) {
+        stopMetricPolling();
+      }
+      return;
+    }
+    //控制否处于切换状态
+    if (newMode === ViewMode.METRIC) {
+      viewTransitioningRef.current = true;
+    } else {
+      stopMetricPolling();
     }
 
     // 通过 ref 调用 BarChart3D 的切换方法
-    if (barChart3DRef.current?.switchViewMode) {
-      barChart3DRef.current.switchViewMode(newMode);
+    const switchPromise = barChart3DRef.current.switchViewMode(newMode);
+
+    //等待模式切换完成再启动轮询
+    if (newMode === ViewMode.METRIC) {
+      Promise.resolve(switchPromise).then(() => {
+        viewTransitioningRef.current = false;
+        const currentMode = barChart3DRef.current?.getViewMode?.();
+        if (currentMode !== ViewMode.METRIC) {
+          return;
+        }
+        const barCount = barSceneData?.bars?.length;
+        if (barCount) {
+          startMetricPolling(barCount);
+        }
+      });
     }
-  }, [barSceneData]);
+  }, [barSceneData, startMetricPolling, stopMetricPolling]);
 
   // 外层悬停回调
   const handleBarHover = useCallback((data) => {

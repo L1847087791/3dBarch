@@ -83,6 +83,11 @@ const BarChart3D = forwardRef(({
       if (viewModeManagerRef.current) {
         viewModeManagerRef.current.setAllMetricData(allMetrics);
       }
+    },
+    setAllMetricDataAnimated: (allMetrics, options = {}) => {
+      if (viewModeManagerRef.current?.setAllMetricDataAnimated) {
+        viewModeManagerRef.current.setAllMetricDataAnimated(allMetrics, options);
+      }
     }
   }), []);
 
