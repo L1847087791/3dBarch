@@ -91,7 +91,7 @@ const GeometryCache = {
  * 只管理数据，外壳和内层都由 BarCollectionManager 的 InstancedMesh 统一管理
  */
 class BarManager {
-  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 10, initHeight = 1, layersData = [], barIndex = 0, groupName = '', baseLayerHeight = 0.088, outerColor = 'normal', uuid = '', layerGap = 0) {
+  constructor(scene, position = { x: 0, y: 0, z: 0 }, barWidth = 10, initHeight = 1, layersData = [], barIndex = 0, groupName = '', baseLayerHeight = 0.088, outerColor = 'normal', uuid = '', layerGap = 0, hostData = null) {
     this.scene = scene;
     this.position = position;
     this.barWidth = barWidth;
@@ -104,6 +104,7 @@ class BarManager {
     this.baseLayerHeight = baseLayerHeight; //基准层高
     this.outerColor = outerColor;
     this.uuid = uuid;
+    this.hostData = hostData; // 存储主机相关数据（id, mc, ip, zylx, gjdj）
 
     this.outerShell = null; //外层用于交互
     this.outerShellInstanceId = -1; //外层在InstancedMesh中的ID
@@ -122,8 +123,9 @@ class BarManager {
     this.innerLayers = [];
     let currentY = this.position.y + this.layerGap;
     for (let i = 0; i < this.layerCount; i++) {
-      const layerColorKey = this.layersData[i]?.color || 'normal';
+      const layerColorKey = this.layersData[i]?.color || 0;
       const layerUuid = this.layersData[i]?.uuid || '';
+      const componentData = this.layersData[i]?.componentData || null; // 存储完整的组件数据
       this.innerLayers.push({
         layerIndex: i,
         barIndex: this.barIndex,
@@ -132,7 +134,8 @@ class BarManager {
         scaleY: scaleY,
         positionY: currentY + actualLayerHeight / 2,
         color: layerColorKey,
-        uuid: layerUuid
+        uuid: layerUuid,
+        componentData: componentData // 组件数据（id, mc, zylx, gjdj）
       });
       currentY += actualLayerHeight + this.layerGap;
     }
@@ -237,7 +240,8 @@ class BarCollectionManager {
         this.baseLayerHeight,
         barData.outerColor || 'normal',
         barData.uuid,
-        this.layerGap
+        this.layerGap,
+        barData.hostData || null // 传递主机数据
       );
 
       bar.outerShellInstanceId = index;

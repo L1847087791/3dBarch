@@ -112,7 +112,8 @@ class ViewModeManager {
       return {
         id: metric.id || id,
         value: typeof metric.value === 'number' ? Math.max(0, Math.min(1, metric.value)) : 0,
-        color: metric.color || MetricViewConfig.defaultColors[i]
+        color: metric.color || MetricViewConfig.defaultColors[i],
+        metricData: metric.metricData || null // 保留完整的指标数据（zbbs, zbmc, dw, value, sj）
       };
     });
   }

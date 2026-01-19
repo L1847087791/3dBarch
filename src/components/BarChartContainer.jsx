@@ -3,6 +3,7 @@ import BarChart3D from "./BarChart3D";
 import { v4 as uuidv4 } from 'uuid';
 import { Button, Drawer, Switch, Space } from "antd";
 import { MetricViewConfig, ViewMode } from "../utils/ViewModeManager";
+import { transformComponentViewData, transformMetricViewData } from "../utils/DataTransformer";
 
 const METRIC_UPDATE_INTERVAL_MS = 1500;
 const METRIC_ANIMATION_DURATION = 0.6;
@@ -10,260 +11,113 @@ const METRIC_ANIMATION_EASE = 'power2.out';
 const METRIC_REQUEST_LATENCY_MS = 200;
 
 /**
- * 5000主机场景配置
- * 20个分区，每区250主机（25列×10行）
- * 分区排列：4列×5行
+ * 生成模拟的组件视图后端数据（严格按照文档格式）
+ * @param {number} hostCount - 主机数量
+ * @param {number} regionCount - 分区数量
+ * @returns {Object} 后端格式的组件视图数据
  */
-const SCENE_CONFIG = {
-  // 主机配置
-  hostsPerRegion: 250,        // 每区主机数
-  regionCols: 10,             // 每区列数
-  regionRows: 25,             // 每区行数
-  layersPerHost: 10,          // 每主机内层数
-  hostSpacing: 30,            // 主机间距
-  barWidth: 10,                // 柱状图宽度
-  barHeight: 30,              // 柱状图高度
+function generateMockComponentViewData(hostCount = 160, regionCount = 3) {
+  const fzs = [];
+  const hostsPerRegion = Math.floor(hostCount / regionCount);
+  const componentTypes = ['MySQL', 'Redis', 'Nginx', 'Tomcat', 'MongoDB'];
 
-  // 分区配置
-  totalRegions: 20,           // 总分区数
-  regionsPerRow: 4,           // 每行分区数
-  regionGap: 200,             // 分区间隔（加大间距）
-};
+  // 生成分组数据
+  for (let i = 0; i < regionCount; i++) {
+    const regionHosts = [];
+    const actualHostCount = i === regionCount - 1
+      ? hostCount - (hostsPerRegion * (regionCount - 1))
+      : hostsPerRegion;
 
-/**
- * 生成5000主机场景数据
- * 20个分区，每区250主机，每主机10个内层
- */
-function generateSceneData5000() {
-  const bars = [];
-  const {
-    regionCols, regionRows, layersPerHost, hostSpacing,
-    barHeight, totalRegions, regionsPerRow, regionGap
-  } = SCENE_CONFIG;
+    for (let j = 0; j < actualHostCount; j++) {
+      const hostId = `host-${i}-${j}`;
+      const componentCount = Math.floor(Math.random() * 8) + 2; // 2-10个组件
+      const components = [];
 
-  const innerColors = [0, 1, 2, 3];
-
-  // 计算单个分区的尺寸
-  const regionWidth = regionCols * hostSpacing;
-  const regionDepth = regionRows * hostSpacing;
-
-  for (let regionIndex = 0; regionIndex < totalRegions; regionIndex++) {
-    // 计算分区在网格中的位置（4列×5行）
-    const regionCol = regionIndex % regionsPerRow;
-    const regionRow = Math.floor(regionIndex / regionsPerRow);
-
-    // 计算分区起始位置（居中布局）
-    const totalWidth = regionsPerRow * regionWidth + (regionsPerRow - 1) * regionGap;
-    const totalDepth = Math.ceil(totalRegions / regionsPerRow) * regionDepth +
-      (Math.ceil(totalRegions / regionsPerRow) - 1) * regionGap;
-
-    const regionStartX = -totalWidth / 2 + regionCol * (regionWidth + regionGap);
-    const regionStartZ = -totalDepth / 2 + regionRow * (regionDepth + regionGap);
-
-    const regionName = `区域 ${regionIndex + 1}`;
-
-    // 在分区内生成主机
-    for (let row = 0; row < regionRows; row++) {
-      for (let col = 0; col < regionCols; col++) {
-        const layers = Array.from({ length: layersPerHost }, (_, i) => ({
-          color: innerColors[i % innerColors.length],
-          uuid: uuidv4()
-        }));
-
-        bars.push({
-          position: {
-            x: regionStartX + col * hostSpacing,
-            y: 0,
-            z: regionStartZ + row * hostSpacing
-          },
-          groupName: regionName,
-          height: barHeight,
-          outerColor: 'normal',
-          uuid: uuidv4(),
-          layers
+      for (let k = 0; k < componentCount; k++) {
+        const componentType = componentTypes[Math.floor(Math.random() * componentTypes.length)];
+        components.push({
+          id: `comp-${hostId}-${k}`,
+          mc: `${componentType}-${k + 1}`,
+          zylx: componentType,
+          gjdj: Math.floor(Math.random() * 4) // 0-3告警等级
         });
       }
+
+      regionHosts.push({
+        id: hostId,
+        mc: `server-${i}-${j}`,
+        ip: `192.168.${i}.${j + 1}`,
+        zylx: Math.random() > 0.5 ? 'Linux' : 'Windows',
+        gjdj: Math.max(...components.map(c => c.gjdj)), // 主机告警等级取最高
+        zj: components
+      });
     }
-  }
 
-  return { bars };
-}
-
-/**
- * 生成5000主机场景的区域指示器信息
- * 区域边框完整包裹所有主机
- */
-function generateGroupIndicatorInfo5000() {
-  const {
-    regionCols, regionRows, hostSpacing, barWidth,
-    totalRegions, regionsPerRow, regionGap
-  } = SCENE_CONFIG;
-
-  const regions = [];
-
-  // 计算单个分区的尺寸
-  const regionWidth = regionCols * hostSpacing;
-  const regionDepth = regionRows * hostSpacing;
-
-  // 边框额外边距（确保包裹主机）
-  const padding = barWidth / 2 + 4;
-
-  for (let regionIndex = 0; regionIndex < totalRegions; regionIndex++) {
-    const regionCol = regionIndex % regionsPerRow;
-    const regionRow = Math.floor(regionIndex / regionsPerRow);
-
-    // 计算分区起始位置（与主机生成逻辑一致）
-    const totalWidth = regionsPerRow * regionWidth + (regionsPerRow - 1) * regionGap;
-    const totalDepth = Math.ceil(totalRegions / regionsPerRow) * regionDepth +
-      (Math.ceil(totalRegions / regionsPerRow) - 1) * regionGap;
-
-    const regionStartX = -totalWidth / 2 + regionCol * (regionWidth + regionGap);
-    const regionStartZ = -totalDepth / 2 + regionRow * (regionDepth + regionGap);
-
-    // 计算区域中心和尺寸（包含边距）
-    // 主机位置范围：[regionStartX, regionStartX + (regionCols-1)*hostSpacing]
-    const centerX = regionStartX + (regionCols - 1) * hostSpacing / 2;
-    const centerZ = regionStartZ + (regionRows - 1) * hostSpacing / 2;
-
-    // 区域尺寸 = 主机范围 + 两侧边距
-    const width = (regionCols - 1) * hostSpacing + padding * 2;
-    const depth = (regionRows - 1) * hostSpacing + padding * 2;
-
-    regions.push({
-      centerX,
-      centerZ,
-      width,
-      depth,
-      label: `区域 ${regionIndex + 1}`
+    fzs.push({
+      fz: i === 0 ? null : `区域${i}`, // 第一个分组为null（无分组）
+      zylb: regionHosts
     });
   }
 
-  return regions;
+  return {
+    code: 200,
+    data: {
+      total: hostCount,
+      fzs
+    }
+  };
 }
+
 /**
- * 生成场景数据（模拟后端返回）
- * 统一的数据接口格式，包含位置、分组、高度、层数据
- * 
+ * 生成模拟的指标视图后端数据（严格按照文档格式）
+ * @param {number} hostCount - 主机数量
+ * @returns {Object} 后端格式的指标视图数据
  */
-function generateSceneData1() {
-  const bars = [];
-  const spacing = 20;
-
-  // 定义颜色列表用于演示
-  const innerColors = [0, 1, 2, 3];
-
-  // 第一堆：60个 (6x10) - 左前方 - 每个柱状图递增层数
-  const group1Rows = 10;
-  const group1Cols = 6;
-  const group1StartX = -250;
-  const group1StartZ = -100;
-  let group1LayerCount = 1;
-  for (let row = 0; row < group1Rows; row++) {
-    for (let col = 0; col < group1Cols; col++) {
-      const layerCount = group1LayerCount++;
-      // 为每层随机分配颜色
-      const layers = Array.from({ length: layerCount }, (_, i) => ({
-        color: innerColors[i % innerColors.length],
-        uuid:uuidv4()
-      }));
-      bars.push({
-        position: { x: group1StartX + col * spacing, y: 0, z: group1StartZ + row * spacing },
-        groupName: '数据集 A',
-        height: 40,
-        outerColor: 'normal',
-        uuid:uuidv4(),
-        layers
-      });
-    }
-  }
-
-  // 第二堆：60个 (6x10) - 右前方 - 每个柱状图递增层数
-  const group2Rows = 10;
-  const group2Cols = 6;
-  const group2StartX = 80;
-  const group2StartZ = -100;
-  let group2LayerCount = 1;
-  for (let row = 0; row < group2Rows; row++) {
-    for (let col = 0; col < group2Cols; col++) {
-     if( group2LayerCount<=80){
-       group2LayerCount +=2
-     }
-      const layerCount = group2LayerCount;
-      // 根据层索引设置不同颜色（模拟告警级别）
-      const layers = Array.from({ length: layerCount }, (_, i) => ({
-        color: innerColors[i % innerColors.length],
-        uuid:uuidv4()
-      }));
-      bars.push({
-        position: { x: group2StartX + col * spacing, y: 0, z: group2StartZ + row * spacing },
-        groupName: '数据集 B',
-        height: 40,
-        outerColor:'normal',
-        uuid:uuidv4(),  
-        layers
-      });
-    }
-  }
-
-  // 第三堆：40个 (5x8) - 后中方 - 每个柱状图50层
-  const group3Rows = 8;
-  const group3Cols = 5;
-  const group3StartX = -80;
-  const group3StartZ = -100;
-  const group3LayerCount = 50;
-  for (let row = 0; row < group3Rows; row++) {
-    for (let col = 0; col < group3Cols; col++) {
-      // 创建渐变颜色效果
-      const layers = Array.from({ length: group3LayerCount }, (_, i) => ({
-         color: innerColors[i % innerColors.length],
-         uuid:uuidv4()
-      }));
-      bars.push({
-        position: { x: group3StartX + col * spacing, y: 0, z: group3StartZ + row * spacing },
-        groupName: '数据集 C',
-        height: 40,
-        outerColor: 'normal',  
-        uuid:uuidv4(),
-        layers
-      });
-    }
-  }
-
-  return { bars };
-}
-/**
- * 生成堆指示器信息
- * 根据柱状图位置计算每个堆的边界和标签信息
- */
-function generateGroupIndicatorInfo() {
-  const spacing = 20;  //需要和柱状图间距保持一致
-
-  return [
-    {
-      // 第一堆：6列x5行 - 左前方
-      centerX: -250 + (5 * spacing) / 2, // x轴中心位置
-      centerZ: -100 + (9 * spacing) / 2, //z轴中心位置
-      width: 6 * spacing,  // x轴长度
-      depth: 10 * spacing,  // z轴长度
-      label: '数据集 A'
-    },
-    {
-      // 第二堆：6列x5行 - 右前方
-      centerX:80 + (5 * spacing) / 2, //x轴中心位置
-      centerZ: -100 + (9 * spacing) / 2, // z轴中心位置
-      width: 6 * spacing,  // x轴长度
-      depth: 10 * spacing,  // z轴长度
-      label: '数据集 B'
-    },
-    {
-      // 第三堆：5列x4行 - 后中方
-      centerX: -80 + (4 * spacing) / 2, // x轴中心位置
-      centerZ: -100 + (7 * spacing) / 2, // z轴中心位置
-      width: 5 * spacing,  // x轴长度
-      depth: 8 * spacing,  //z轴长度
-      label: '数据集 C'
-    }
+function generateMockMetricViewData(hostCount = 160) {
+  const data = [];
+  const metricTypes = [
+    { zbbs: 'system.cpu.pct_usage', zbmc: 'CPU使用率', dw: '%' },
+    { zbbs: 'system.mem.pct_usage', zbmc: '内存使用率', dw: '%' },
+    { zbbs: 'system.disk.pct_usage', zbmc: '磁盘使用率', dw: '%' },
+    { zbbs: 'system.network.pct_usage', zbmc: '网络使用率', dw: '%' },
+    { zbbs: 'system.io.pct_usage', zbmc: 'IO使用率', dw: '%' }
   ];
+
+  for (let i = 0; i < hostCount; i++) {
+    const metrics = metricTypes.map(type => ({
+      zbbs: type.zbbs,
+      zbmc: type.zbmc,
+      dw: type.dw,
+      value: Math.random() * 100, // 0-100的百分比值
+      sj: Date.now()
+    }));
+
+    data.push({
+      id: `host-${Math.floor(i / 53)}-${i % 53}`, // 匹配组件视图的主机ID
+      zymc: `server-${Math.floor(i / 53)}-${i % 53}`,
+      zylx: Math.random() > 0.5 ? 'Linux' : 'Windows',
+      zb: metrics
+    });
+  }
+
+  return {
+    total: hostCount,
+    data
+  };
+}
+
+/**
+ * 生成5000主机的模拟组件视图数据
+ */
+function generateMockComponentViewData5000() {
+  return generateMockComponentViewData(5000, 20);
+}
+
+/**
+ * 生成5000主机的模拟指标视图数据
+ */
+function generateMockMetricViewData5000() {
+  return generateMockMetricViewData(5000);
 }
 
 /**
@@ -303,18 +157,24 @@ const BarChartContainer = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerData, setDrawerData] = useState(null);
 
-  // 获取原有测试数据
+  // 获取原有测试数据（160主机）
   const getBarSceneData1 = () => {
-    const data = generateSceneData1();
-    setBarSceneData(data);
-    setGroupIndicatorInfo(generateGroupIndicatorInfo());
+    // 生成mock后端数据
+    const mockBackendData = generateMockComponentViewData(160, 3);
+    // 转换为前端格式
+    const { sceneData, groupIndicatorInfo } = transformComponentViewData(mockBackendData);
+    setBarSceneData(sceneData);
+    setGroupIndicatorInfo(groupIndicatorInfo);
   };
 
   // 获取5000主机测试数据
   const getBarSceneData5000 = () => {
-    const data = generateSceneData5000();
-    setBarSceneData(data);
-    setGroupIndicatorInfo(generateGroupIndicatorInfo5000());
+    // 生成mock后端数据
+    const mockBackendData = generateMockComponentViewData5000();
+    // 转换为前端格式
+    const { sceneData, groupIndicatorInfo } = transformComponentViewData(mockBackendData);
+    setBarSceneData(sceneData);
+    setGroupIndicatorInfo(groupIndicatorInfo);
   };
 
   // 清空数据
@@ -337,20 +197,11 @@ const BarChartContainer = () => {
   }, []);
 
   const generateMockMetricData = useCallback((barCount) => {
-    const metricIds = MetricViewConfig.defaultMetricIds;
-    const colors = MetricViewConfig.defaultColors;
-    const allMetrics = new Array(barCount);
-
-    for (let i = 0; i < barCount; i++) {
-      const metrics = metricIds.map((id, index) => ({
-        id,
-        value: Math.random(),
-        color: colors[index]
-      }));
-      allMetrics[i] = metrics;
-    }
-
-    return allMetrics;
+    // 生成mock后端指标数据
+    const mockBackendData = generateMockMetricViewData(barCount);
+    // 转换为前端格式
+    const { metricsArray } = transformMetricViewData(mockBackendData);
+    return metricsArray;
   }, []);
 
   const fetchMockMetricData = useCallback((barCount) => {
@@ -447,6 +298,19 @@ const BarChartContainer = () => {
 
   // 外层悬停回调
   const handleBarHover = useCallback((data) => {
+    // 从BarManager获取主机数据和组件数据
+    const bar = data.bar; // BarChart3D应该传递bar对象
+    const hostData = bar?.hostData;
+    const components = bar?.innerLayers?.map(layer => layer.componentData).filter(Boolean) || [];
+
+    // 统计服务组件类型数量
+    const componentTypeCount = {};
+    components.forEach(comp => {
+      if (comp && comp.zylx) {
+        componentTypeCount[comp.zylx] = (componentTypeCount[comp.zylx] || 0) + 1;
+      }
+    });
+
     setTooltip({
       visible: true,
       x: data.screenPosition.x,
@@ -455,7 +319,9 @@ const BarChartContainer = () => {
         type: 'outer',
         barIndex: data.barIndex,
         uuid: data.uuid,
-        groupName: data.groupName
+        groupName: data.groupName,
+        hostData: hostData,
+        componentTypeCount: componentTypeCount
       }
     });
   }, []);
@@ -478,6 +344,11 @@ const BarChartContainer = () => {
 
   // 内层悬停回调
   const handleLayerHover = useCallback((data) => {
+    // 从BarManager获取组件数据
+    const bar = data.bar;
+    const layer = bar?.innerLayers?.[data.layerIndex];
+    const componentData = layer?.componentData;
+
     setTooltip({
       visible: true,
       x: data.screenPosition.x,
@@ -488,7 +359,8 @@ const BarChartContainer = () => {
         layerIndex: data.layerIndex,
         barUuid: data.barUuid,
         layerUuid: data.layerUuid,
-        groupName: data.groupName
+        groupName: data.groupName,
+        componentData: componentData
       }
     });
   }, []);
@@ -513,6 +385,10 @@ const BarChartContainer = () => {
 
   // 指标视图悬停回调
   const handleMetricHover = useCallback((data) => {
+    // 从BarManager获取主机数据
+    const bar = data.bar;
+    const hostData = bar?.hostData;
+
     setTooltip({
       visible: true,
       x: data.screenPosition.x,
@@ -522,7 +398,8 @@ const BarChartContainer = () => {
         barIndex: data.barIndex,
         uuid: data.uuid,
         groupName: data.groupName,
-        metrics: data.metrics
+        metrics: data.metrics,
+        hostData: hostData
       }
     });
   }, []);
@@ -594,25 +471,49 @@ const BarChartContainer = () => {
           >
             {tooltip.data.type === 'outer' ? (
               <>
-                <div><strong>主机</strong></div>
-                <div>索引: {tooltip.data.barIndex}</div>
-                <div>UUID: {truncateUuid(tooltip.data.uuid)}</div>
+                {/* 组件视图 - 主机浮层 */}
+                <div><strong>{tooltip.data.hostData?.mc || '主机'}:{tooltip.data.hostData?.ip || '-'}</strong></div>
+                {Object.entries(tooltip.data.componentTypeCount || {}).map(([type, count]) => (
+                  <div key={type} style={{ marginTop: '4px' }}>
+                    {count}  {type}
+                  </div>
+                ))}
               </>
             ) : tooltip.data.type === 'inner' ? (
               <>
-                <div>索引: {tooltip.data.layerIndex}</div>
-                <div>UUID: {truncateUuid(tooltip.data.layerUuid)}</div>
+                {/* 组件视图 - 服务组件浮层 */}
+                <div><strong>服务组件</strong></div>
+                {tooltip.data.componentData ? (
+                  <>
+                    <div>名称: {tooltip.data.componentData.mc}</div>
+                    <div>类型: {tooltip.data.componentData.zylx}</div>
+                    <div>告警等级: {tooltip.data.componentData.gjdj}</div>
+                  </>
+                ) : (
+                  <div>无组件数据</div>
+                )}
               </>
             ) : tooltip.data.type === 'metric' ? (
               <>
-                <div><strong>主机指标</strong></div>
-                <div>UUID: {truncateUuid(tooltip.data.uuid)}</div>
+                {/* 指标视图 - 主机指标浮层 */}
+                <div><strong>{tooltip.data.hostData?.mc || '主机'}:{tooltip.data.hostData?.ip || '-'}</strong></div>
                 <div style={{ marginTop: '4px', borderTop: '1px solid #555', paddingTop: '4px' }}>
-                  {tooltip.data.metrics?.map((m, i) => (
-                    <div key={i}>
-                      {m.id}: {m.percent}%
-                    </div>
-                  ))}
+                  {tooltip.data.metrics?.map((m, i) => {
+                    const metricData = m.metricData;
+                    const colorMap = {
+                      metric1: '#EDF2FA',
+                      metric2: '#4A90D9',
+                      metric3: '#F5A623',
+                      metric4: '#D0021B',
+                      metric5: '#8B0000'
+                    };
+                    const textColor = colorMap[m.color] || '#fff';
+                    return (
+                      <div key={i} style={{ color: textColor }}>
+                        {metricData?.zbmc || m.id}: {metricData?.value?.toFixed(1) || 0}%
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             ) : null}

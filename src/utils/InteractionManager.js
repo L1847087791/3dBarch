@@ -191,12 +191,9 @@ class InteractionManager {
             barIndex,
             uuid: bar.uuid,
             groupName: bar.groupName,
-            metrics: metrics.map(m => ({
-              id: m.id,
-              value: m.value,
-              percent: Math.round(m.value * 100)
-            })),
-            screenPosition
+            metrics: metrics, // 直接传递完整的metrics数据（包含metricData和color）
+            screenPosition,
+            bar: bar // 传递完整的bar对象
           });
         }
       }
@@ -297,7 +294,8 @@ class InteractionManager {
           barIndex,
           uuid: bar.uuid,
           groupName: bar.groupName,
-          screenPosition
+          screenPosition,
+          bar: bar // 传递完整的bar对象
         });
       }
     }
@@ -359,7 +357,8 @@ class InteractionManager {
             barUuid: bar.uuid,
             layerUuid: layerData?.uuid,
             groupName: bar.groupName,
-            screenPosition
+            screenPosition,
+            bar: bar // 传递完整的bar对象
           });
         }
       }
