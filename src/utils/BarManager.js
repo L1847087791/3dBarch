@@ -8,7 +8,7 @@ import BarAnimationManager from './BarAnimationManager';
 const ColorMap = {
   // 内层颜色（告警级别：0-3）
   inner: {
-    0: '#EDF2FA',    // 正常
+    0: '#f2f2f2',    // 正常
     1: '#ffcd3d',    // 次要
     2: '#ff8c3d',    // 主要
     3: '#d9001b',    // 严重
@@ -32,9 +32,6 @@ const SharedMaterials = {
   // 内层材质（Phong光照）- 启用顶点颜色支持实例颜色
   innerLayer: new THREE.MeshPhongMaterial({
     color: 0xffffff,
-    emissive: 0x888888,
-    emissiveIntensity: 0.3,
-    shininess: 50
   }),
   // 边框材质
   edges: new THREE.LineBasicMaterial({

@@ -29,12 +29,12 @@ class ThreeScene {
     this.scene.background = new THREE.Color('lightblue'); // 蓝色背景
 
     //创建坐标辅助器，仅用于区分笛卡尔坐标 ：X 轴为红色，Y 轴为绿色，Z 轴为蓝色
-    const axesHelper = new THREE.AxesHelper(200)
-    this.scene.add(axesHelper);
+    // const axesHelper = new THREE.AxesHelper(200)
+    // this.scene.add(axesHelper);
 
-    //创建网格辅助器，调试场景图位置
-    const grideHelper = new THREE.GridHelper(5000, 100)   //步长为5000/100=50
-    this.scene.add(grideHelper)
+    // //创建网格辅助器，调试场景图位置
+    // const grideHelper = new THREE.GridHelper(5000, 100)   //步长为5000/100=50
+    // this.scene.add(grideHelper)
 
     //添加地平面
     const groundMesh = new THREE.Mesh(
@@ -88,7 +88,7 @@ class ThreeScene {
    */
   setupLights() {
     // 环境光 - 提供基础亮度
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1);
     this.scene.add(ambientLight);
     this.lights.push(ambientLight);
 

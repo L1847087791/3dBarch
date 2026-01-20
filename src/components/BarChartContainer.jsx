@@ -1,8 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import BarChart3D from "./BarChart3D";
-import { v4 as uuidv4 } from 'uuid';
 import { Button, Drawer, Switch, Space } from "antd";
-import { MetricViewConfig, ViewMode } from "../utils/ViewModeManager";
+import { ViewMode } from "../utils/ViewModeManager";
 import { transformComponentViewData, transformMetricViewData } from "../utils/DataTransformer";
 
 const METRIC_UPDATE_INTERVAL_MS = 1500;
@@ -30,7 +29,7 @@ function generateMockComponentViewData(hostCount = 160, regionCount = 3) {
 
     for (let j = 0; j < actualHostCount; j++) {
       const hostId = `host-${i}-${j}`;
-      const componentCount = Math.floor(Math.random() * 8) + 2; // 2-10个组件
+      const componentCount = Math.random()<0.5?Math.floor(Math.random() * 6)+5:Math.floor(Math.random() * 10)+1; // 1-10个组件
       const components = [];
 
       for (let k = 0; k < componentCount; k++) {
@@ -39,7 +38,7 @@ function generateMockComponentViewData(hostCount = 160, regionCount = 3) {
           id: `comp-${hostId}-${k}`,
           mc: `${componentType}-${k + 1}`,
           zylx: componentType,
-          gjdj: Math.floor(Math.random() * 4) // 0-3告警等级
+          gjdj: Math.random()<0.8?0:Math.random()<0.8?Math.floor(Math.random() * 3):Math.floor(Math.random() * 4) // 0-3告警等级
         });
       }
 
@@ -107,20 +106,6 @@ function generateMockMetricViewData(hostCount = 160) {
 }
 
 /**
- * 生成5000主机的模拟组件视图数据
- */
-function generateMockComponentViewData5000() {
-  return generateMockComponentViewData(5000, 20);
-}
-
-/**
- * 生成5000主机的模拟指标视图数据
- */
-function generateMockMetricViewData5000() {
-  return generateMockMetricViewData(5000);
-}
-
-/**
  * 截断UUID显示
  * @param {string} uuid - 完整UUID
  * @param {number} length - 显示长度
@@ -170,7 +155,7 @@ const BarChartContainer = () => {
   // 获取5000主机测试数据
   const getBarSceneData5000 = () => {
     // 生成mock后端数据
-    const mockBackendData = generateMockComponentViewData5000();
+    const mockBackendData = generateMockComponentViewData(5000,20);
     // 转换为前端格式
     const { sceneData, groupIndicatorInfo } = transformComponentViewData(mockBackendData);
     setBarSceneData(sceneData);
@@ -501,11 +486,11 @@ const BarChartContainer = () => {
                   {tooltip.data.metrics?.map((m, i) => {
                     const metricData = m.metricData;
                     const colorMap = {
-                      metric1: '#EDF2FA',
+                      metric1: '#6cad7c',
                       metric2: '#4A90D9',
                       metric3: '#F5A623',
-                      metric4: '#D0021B',
-                      metric5: '#8B0000'
+                      metric4: '#e975b4',
+                      metric5: '#fff500'
                     };
                     const textColor = colorMap[m.color] || '#fff';
                     return (

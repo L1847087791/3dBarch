@@ -60,11 +60,11 @@ class ViewModeManager {
 
     // 颜色映射（指标区分颜色，非告警含义）
     this.colorMap = {
-      metric1: '#EDF2FA',
+      metric1: '#6cad7c',
       metric2: '#4A90D9',
       metric3: '#F5A623',
-      metric4: '#D0021B',
-      metric5: '#8B0000'
+      metric4: '#e975b4',
+      metric5: '#fff500'
     };
 
     // 回调
@@ -148,9 +148,6 @@ class ViewModeManager {
     // 创建材质（克隆共享材质）
     const metricMaterial = new THREE.MeshPhongMaterial({
       color: 0xffffff,
-      emissive: 0x888888,
-      emissiveIntensity: 0.3,
-      shininess: 50
     });
 
     this.metricLayerInstancedMesh = new THREE.InstancedMesh(
