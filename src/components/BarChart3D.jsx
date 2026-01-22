@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle 
 import ThreeScene from '../utils/ThreeScene';
 import { BarCollectionManager } from '../utils/BarManager';
 import CameraControls from '../utils/CameraControls';
+import CameraAnimator from '../utils/CameraAnimator';
 import GroupIndicatorManager from '../utils/GroupIndicatorManager';
 import InteractionManager from '../utils/InteractionManager';
 import ViewModeManager from '../utils/ViewModeManager';
@@ -24,11 +25,15 @@ const BarChart3D = forwardRef(({
   const barManagerRef = useRef(null);
   const viewModeManagerRef = useRef(null);  // 视图模式管理器
   const controlsRef = useRef(null);
+  const cameraAnimatorRef = useRef(null);  // 摄像机动画控制器
   const groupIndicatorRef = useRef(null);
   const interactionRef = useRef(null);
   const workerRef = useRef(null);
   const animationFrameRef = useRef(null);
   const isInitializedRef = useRef(false);
+
+  // 摄像机聚焦状态
+  const [cameraFocused, setCameraFocused] = React.useState(false);
 
   // 使用 useRef 保存回调函数
   const callbacksRef = useRef({
@@ -93,6 +98,12 @@ const BarChart3D = forwardRef(({
 
   // 清理场景内容（不销毁渲染器）
   const clearSceneContent = useCallback(() => {
+    // 先销毁摄像机动画控制器
+    if (cameraAnimatorRef.current) {
+      cameraAnimatorRef.current.dispose();
+      cameraAnimatorRef.current = null;
+    }
+
     if (controlsRef.current) {
       controlsRef.current.dispose();
       controlsRef.current = null;
@@ -122,18 +133,16 @@ const BarChart3D = forwardRef(({
     if (sceneRef.current) {
       sceneRef.current.clearSceneContent();
     }
+
+    setCameraFocused(false);
   }, []);
 
   // 第一个 useEffect：只在组件挂载时初始化渲染器
   useEffect(() => {
     if (!containerRef.current) return;
 
-    console.log('初始化 Three.js 渲染器（仅执行一次）...');
-
     sceneRef.current = new ThreeScene(containerRef.current);
     isInitializedRef.current = true;
-
-    console.log('渲染器已创建');
 
     const animate = () => {
       animationFrameRef.current = requestAnimationFrame(animate);
@@ -148,11 +157,7 @@ const BarChart3D = forwardRef(({
     };
     animate();
 
-    console.log('渲染循环已启动');
-
     return () => {
-      console.log('组件卸载，完全清理资源...');
-
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -177,11 +182,9 @@ const BarChart3D = forwardRef(({
   useEffect(() => {
     if (!isInitializedRef.current || !sceneRef.current) return;
     if (!barSceneData) {
-      console.log('------场景数据为空---------');
       return;
     }
 
-    console.log('更新场景数据...');
     const scene = sceneRef.current.getScene();
     const camera = sceneRef.current.getCamera();
     const renderer = sceneRef.current.getRenderer();
@@ -190,19 +193,14 @@ const BarChart3D = forwardRef(({
     barManagerRef.current = new BarCollectionManager(scene);
     barManagerRef.current.createBars(barSceneData, 10, 1);
 
-    console.log(`已创建 ${barSceneData.bars.length} 个柱状图`);
-
     // 创建视图模式管理器
     viewModeManagerRef.current = new ViewModeManager(scene, barManagerRef.current);
     viewModeManagerRef.current.initialize();
-
-    console.log('视图模式管理器已初始化');
 
     // 创建区域指示器
     if (groupIndicatorInfo && groupIndicatorInfo.length > 0) {
       groupIndicatorRef.current = new GroupIndicatorManager(scene);
       groupIndicatorRef.current.createAllIndicators(groupIndicatorInfo);
-      console.log(`已创建 ${groupIndicatorInfo.length} 个区域指示器`);
     }
 
     // 设置相机控制
@@ -212,7 +210,45 @@ const BarChart3D = forwardRef(({
       { x: 0, y: 0, z: 0 }
     );
 
-    console.log('相机控制已设置');
+    // 创建摄像机动画控制器
+    cameraAnimatorRef.current = new CameraAnimator(
+      camera,
+      controlsRef.current,
+      scene,
+      {
+        cameraOffsetX: 10,
+        cameraOffsetZ: 30,
+        cameraOffsetY: -2,
+        animationDuration: 1.2,
+        onFocusStart: () => {},
+        onFocusComplete: () => {
+          setCameraFocused(true);
+        },
+        onResetComplete: () => {
+          setCameraFocused(false);
+        }
+      }
+    );
+
+    // 保存初始相机状态
+    cameraAnimatorRef.current.setInitialState(
+      camera.position.clone(),
+      { x: 0, y: 0, z: 0 }
+    );
+
+    // 隐藏区域标签的回调
+    const hideRegionLabels = () => {
+      if (groupIndicatorRef.current) {
+        groupIndicatorRef.current.hideLabels();
+      }
+    };
+
+    // 显示区域标签的回调
+    const showRegionLabels = () => {
+      if (groupIndicatorRef.current) {
+        groupIndicatorRef.current.showLabels();
+      }
+    };
 
     // 设置交互管理器（传入 ViewModeManager）
     interactionRef.current = new InteractionManager(
@@ -228,17 +264,65 @@ const BarChart3D = forwardRef(({
         onLayerLeave: (...args) => callbacksRef.current.onLayerLeave?.(...args),
         onLayerClick: (...args) => callbacksRef.current.onLayerClick?.(...args),
         onMetricHover: (...args) => callbacksRef.current.onMetricHover?.(...args),
-        onMetricLeave: (...args) => callbacksRef.current.onMetricLeave?.(...args)
+        onMetricLeave: (...args) => callbacksRef.current.onMetricLeave?.(...args),
+        onHideRegionLabels: hideRegionLabels,
+        onShowRegionLabels: showRegionLabels
       }
     );
 
-    console.log('交互管理器已设置');
+    // 将摄像机动画控制器注入到交互管理器
+    interactionRef.current.setCameraAnimator(cameraAnimatorRef.current);
 
     return () => {
       clearSceneContent();
     };
 
   }, [barSceneData, groupIndicatorInfo, clearSceneContent]);
+
+  // 摄像机重置按钮点击处理
+  const handleCameraReset = useCallback(() => {
+    if (cameraAnimatorRef.current) {
+      // 显示区域标签的回调
+      const showRegionLabels = () => {
+        if (groupIndicatorRef.current) {
+          groupIndicatorRef.current.showLabels();
+        }
+      };
+
+      cameraAnimatorRef.current.resetCamera(showRegionLabels);
+
+      // 清除交互管理器的选中状态
+      if (interactionRef.current) {
+        interactionRef.current.clearSelection();
+      }
+    }
+  }, []);
+
+  // 取消预览按钮点击处理（保持摄像机位置，取消虚化效果）
+  const handleCancelPreview = useCallback(() => {
+    // 移除内层3D文字标签
+    if (cameraAnimatorRef.current) {
+      cameraAnimatorRef.current.clearFocus();
+    }
+
+    // 显示区域标签
+    if (groupIndicatorRef.current) {
+      groupIndicatorRef.current.showLabels();
+    }
+
+    // 取消虚化效果
+    if (barManagerRef.current) {
+      barManagerRef.current.unfocus();
+    }
+
+    // 清除交互管理器的选中状态
+    if (interactionRef.current) {
+      interactionRef.current.clearSelection();
+    }
+
+    // 更新状态
+    setCameraFocused(false);
+  }, []);
 
   return (
     <div
@@ -248,9 +332,35 @@ const BarChart3D = forwardRef(({
         height: '100%',
         overflow: 'hidden',
         margin: 0,
-        padding: 0
+        padding: 0,
+        position: 'relative'
       }}
-    />
+    >
+      {/* 摄像机重置按钮 */}
+      {cameraFocused && (
+        <button
+          className="camera-reset-btn"
+          onClick={handleCameraReset}
+          title="重置摄像机"
+        >
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+          </svg>
+        </button>
+      )}
+      {/* 取消预览按钮 */}
+      {cameraFocused && (
+        <button
+          className="camera-cancel-btn"
+          onClick={handleCancelPreview}
+          title="取消预览"
+        >
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </svg>
+        </button>
+      )}
+    </div>
   );
 });
 

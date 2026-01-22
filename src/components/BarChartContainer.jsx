@@ -53,7 +53,7 @@ function generateMockComponentViewData(hostCount = 160, regionCount = 3) {
     }
 
     fzs.push({
-      fz: i === 0 ? null : `区域${i}`, // 第一个分组为null（无分组）
+      fz: i === 0 ? null : `APP：手机银行_${i}`, // 第一个分组为null（无分组）
       zylb: regionHosts
     });
   }

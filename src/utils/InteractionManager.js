@@ -21,6 +21,9 @@ class InteractionManager {
     this.barCollectionManager = barCollectionManager;
     this.viewModeManager = viewModeManager;
 
+    // 摄像机动画控制器（由外部注入）
+    this.cameraAnimator = null;
+
     // 回调函数
     this.callbacks = {
       onBarHover: callbacks.onBarHover || null,
@@ -31,6 +34,8 @@ class InteractionManager {
       onLayerClick: callbacks.onLayerClick || null,
       onMetricHover: callbacks.onMetricHover || null,
       onMetricLeave: callbacks.onMetricLeave || null,
+      onHideRegionLabels: callbacks.onHideRegionLabels || null,
+      onShowRegionLabels: callbacks.onShowRegionLabels || null,
     };
 
     // 射线追踪器
@@ -70,6 +75,14 @@ class InteractionManager {
 
     // 初始化事件监听
     this._initEventListeners();
+  }
+
+  /**
+   * 设置摄像机动画控制器
+   * @param {CameraAnimator} cameraAnimator - 摄像机动画控制器实例
+   */
+  setCameraAnimator(cameraAnimator) {
+    this.cameraAnimator = cameraAnimator;
   }
 
   /**
@@ -716,13 +729,6 @@ class InteractionManager {
       const bar = this.barCollectionManager.getBars()[barIndex];
 
       if (bar) {
-        console.log('点击了柱状图:', {
-          barIndex: barIndex,
-          groupName: bar.groupName,
-          uuid: bar.uuid,
-          bar: bar
-        });
-
         // 触发外层点击回调
         if (this.callbacks.onBarClick) {
           this.callbacks.onBarClick({
@@ -759,14 +765,6 @@ class InteractionManager {
         // 只处理当前选中柱状图的内层
         if (layerInfo && layerInfo.barIndex === this.selectedBarIndex) {
           const layerData = bar.innerLayers[layerInfo.layerIndex];
-          console.log('点击了内层:', {
-            barIndex: this.selectedBarIndex,
-            layerIndex: layerInfo.layerIndex,
-            barUuid: bar.uuid,
-            layerUuid: layerData?.uuid,
-            groupName: bar.groupName,
-            instanceId: instanceId
-          });
 
           // 触发内层点击回调
           if (this.callbacks.onLayerClick) {
@@ -783,8 +781,8 @@ class InteractionManager {
         }
       }
     }
-    // 点击了空白区域或其他主机，取消选中
-    this._clearBarSelection();
+    // // 点击了空白区域或其他主机，取消选中
+    // this._clearBarSelection();
   }
 
   /**
@@ -812,6 +810,11 @@ class InteractionManager {
     // 如果点击的是已选中的柱状图，不做处理
     if (this.selectedBarIndex === barIndex) return;
 
+    // 如果摄像机动画控制器存在且有聚焦状态，先清除之前的聚焦
+    if (this.cameraAnimator && this.cameraAnimator.hasFocus()) {
+      this.cameraAnimator.clearFocus();
+    }
+
     // 恢复之前选中柱状图的外层可拾取状态
     if (this.selectedBarIndex !== null) {
       this._restoreOuterShellRaycast(this.selectedBarIndex);
@@ -837,7 +840,20 @@ class InteractionManager {
     // 触发虚化聚焦效果
     this.barCollectionManager.focusOnBar(barIndex);
 
-    console.log(`柱状图 ${barIndex} 已选中，外层射线检测已禁用，可以与内层交互`);
+    // 触发摄像机聚焦动画
+    const bar = this.barCollectionManager.getBars()[barIndex];
+    if (this.cameraAnimator && bar) {
+      this.cameraAnimator.focusOnBar(
+        bar,
+        barIndex,
+        () => {
+          // 隐藏区域标签
+          if (this.callbacks.onHideRegionLabels) {
+            this.callbacks.onHideRegionLabels();
+          }
+        }
+      );
+    }
   }
 
   /**
@@ -858,8 +874,6 @@ class InteractionManager {
 
     // 取消虚化聚焦
     this.barCollectionManager.unfocus();
-
-    console.log(`柱状图 ${this.selectedBarIndex} 已取消选中，外层射线检测已恢复`);
 
     this.selectedBarIndex = null;
   }

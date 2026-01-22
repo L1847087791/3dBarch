@@ -100,6 +100,30 @@ class GroupIndicatorManager {
   }
 
   /**
+   * 隐藏所有区域标签
+   */
+  hideLabels() {
+    this.indicators.forEach(({ textLabel }) => {
+      if (textLabel && textLabel.element) {
+        textLabel.element.style.opacity = '0';
+        textLabel.element.style.pointerEvents = 'none';
+      }
+    });
+  }
+
+  /**
+   * 显示所有区域标签
+   */
+  showLabels() {
+    this.indicators.forEach(({ textLabel }) => {
+      if (textLabel && textLabel.element) {
+        textLabel.element.style.opacity = '1';
+        textLabel.element.style.pointerEvents = '';
+      }
+    });
+  }
+
+  /**
    * 销毁所有指示器
    */
   dispose() {
