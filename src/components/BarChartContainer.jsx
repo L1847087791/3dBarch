@@ -318,13 +318,7 @@ const BarChartContainer = () => {
 
   // 外层点击回调
   const handleBarClick = useCallback((data) => {
-    setDrawerData({
-      type: 'bar',
-      barIndex: data.barIndex,
-      uuid: data.uuid,
-      groupName: data.groupName
-    });
-    setDrawerOpen(true);
+    //不再展示抽屉，改为摄像机移动并添加3D文字
   }, []);
 
   // 内层悬停回调

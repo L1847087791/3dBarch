@@ -7,8 +7,8 @@
  * 位置生成配置
  */
 const DEFAULT_LAYOUT_CONFIG = {
-  hostSpacing: 30,           // 主机间距
-  regionGap: 200,            // 分区间隔
+  hostSpacing: 40,           // 主机间距
+  regionGap: 100,            // 分区间隔
   hostsPerRow: 10,           // 每行主机数（用于无分组时的布局）
   regionsPerRow: 6,          // 每行分区数
   barWidth: 10,              // 柱状图宽度

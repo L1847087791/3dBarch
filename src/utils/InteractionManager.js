@@ -688,7 +688,7 @@ class InteractionManager {
     }
 
     // 组件视图：原有逻辑
-    // 如果已有选中的柱状图，检测内层点击或其他柱状图点击
+    // 如果已有选中的柱状图，检测内层点击或其他点击
     if (this.selectedBarIndex !== null) {
       this._handleClickWithSelection();
       return;
@@ -783,46 +783,7 @@ class InteractionManager {
         }
       }
     }
-
-    // 检测是否点击了其他柱状图的外层（使用 InstancedMesh）
-    const outerShellInstancedMesh = this.barCollectionManager.getOuterShellInstancedMesh();
-    if (outerShellInstancedMesh) {
-      const outerIntersects = this.raycaster.intersectObject(outerShellInstancedMesh);
-
-      if (outerIntersects.length > 0) {
-        const intersected = outerIntersects[0];
-        const barIndex = intersected.instanceId;
-
-        // 跳过当前选中的柱状图
-        if (barIndex !== this.selectedBarIndex) {
-          const clickedBar = this.barCollectionManager.getBars()[barIndex];
-          if (clickedBar) {
-            console.log('点击了柱状图:', {
-              barIndex: barIndex,
-              groupName: clickedBar.groupName,
-              uuid: clickedBar.uuid,
-              bar: clickedBar
-            });
-
-            // 触发外层点击回调
-            if (this.callbacks.onBarClick) {
-              this.callbacks.onBarClick({
-                type: 'bar',
-                barIndex,
-                uuid: clickedBar.uuid,
-                groupName: clickedBar.groupName
-              });
-            }
-
-            // 切换到新的柱状图
-            this._onBarSelected(barIndex);
-            return;
-          }
-        }
-      }
-    }
-
-    // 点击了空白区域，取消选中
+    // 点击了空白区域或其他主机，取消选中
     this._clearBarSelection();
   }
 
