@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useEffect, useRef, useCallback, forwardRef, useImperativeHandle,useState} from 'react';
 import ThreeScene from '../utils/ThreeScene';
 import { BarCollectionManager } from '../utils/BarManager';
 import CameraControls from '../utils/CameraControls';
@@ -33,7 +33,7 @@ const BarChart3D = forwardRef(({
   const isInitializedRef = useRef(false);
 
   // 摄像机聚焦状态
-  const [cameraFocused, setCameraFocused] = React.useState(false);
+  const [cameraFocused, setCameraFocused] = useState(false);
 
   // 使用 useRef 保存回调函数
   const callbacksRef = useRef({

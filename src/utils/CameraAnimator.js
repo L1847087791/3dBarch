@@ -218,19 +218,23 @@ class CameraAnimator {
       const fontSize = 48;
       context.font = `bold ${fontSize}px Arial`;
       const textWidth = context.measureText(componentName).width;
-      canvas.width = textWidth + 20;
-      canvas.height = fontSize + 20;
+      canvas.width = textWidth + 60;
+      canvas.height = fontSize + 60;
 
       // 重新设置字体（canvas 尺寸改变后需要重新设置）
       context.font = `bold ${fontSize}px Arial`;
       context.fillStyle = 'white';
       context.textBaseline = 'middle';
       context.textAlign = 'left';
-      context.fillText(componentName, 10, canvas.height / 2);
+      context.fillText(componentName,30, canvas.height / 2);
 
       // 创建纹理
       const texture = new THREE.CanvasTexture(canvas);
       texture.needsUpdate = true;
+      //优化文本贴图配置，避免文字边缘被吃
+      texture.generateMipmaps = false;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
 
       // 创建平面几何体显示文字
       const aspectRatio = canvas.width / canvas.height;
@@ -241,8 +245,9 @@ class CameraAnimator {
       const material = new THREE.MeshBasicMaterial({
         map: texture,
         transparent: true,
+        opacity:0,
         side: THREE.DoubleSide,
-        depthTest: true,
+        depthTest: false,
         depthWrite: false
       });
 
@@ -255,9 +260,6 @@ class CameraAnimator {
         bar.position.z
       );
 
-      // 初始透明度为0
-      material.opacity = 0;
-
       this.scene.add(textMesh);
       this.innerLayerLabels.push({
         mesh: textMesh,
@@ -265,15 +267,17 @@ class CameraAnimator {
         texture: texture,
         geometry: geometry
       });
-
-      // 使用 gsap 动画显示标签（自下而上）
-      gsap.to(material, {
-        opacity: 1,
-        duration: 0.3,
-        delay: index * this.options.labelAnimationDelay,
-        ease: 'power2.out'
-      });
     });
+
+   const materials = this.innerLayerLabels.map(item => item.material);
+ // 使用 gsap 动画显示标签（自下而上）,利用官方更为推荐的stagger写法
+    gsap.to(materials, {
+       opacity: 1,
+       duration: 0.3,
+       stagger: this.options.labelAnimationDelay,
+       ease: 'power2.out'
+      });
+
   }
 
   /**
