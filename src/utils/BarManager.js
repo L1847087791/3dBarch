@@ -191,7 +191,7 @@ class BarCollectionManager {
     this.barWidth = 0;
     this.initHeight = 0;
     this.baseLayerHeight = 0;
-    this.layerGap = 0.1;  //内层间隙
+    this.layerGap = 0.25;  //内层间隙
 
     // 临时对象（复用以提高性能）
     this.tempMatrix = new THREE.Matrix4();
