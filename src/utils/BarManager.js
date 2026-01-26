@@ -3,39 +3,48 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import BarAnimationManager from './BarAnimationManager';
 
 /**
- * 颜色映射表
+ * 颜色映射表 - 服务器机柜风格（浅灰色系 + 状态指示灯）
  */
 const ColorMap = {
-  // 内层颜色（告警级别：0-3）
+  // 内层颜色（告警级别：0-3）- 浅灰色主体
   inner: {
-    0: '#f2f2f2',    // 正常
-    1: '#ffcd3d',    // 次要
-    2: '#ff8c3d',    // 主要
-    3: '#d9001b',    // 严重
+    0: '#e8eef5',    // 浅灰蓝（正常）
+    1: '#ffcd3d',    // 浅黄（次要）
+    2: '#ff8c3d',    // 浅粉（主要）
+    3: '#ff4849',    // 浅红（严重）
   },
-  // 外层颜色（固定为normal）
+  // 外层颜色
   outer: {
-    normal: '#EDF2FA',    // 正常（固定）
+    normal: '#f5f5f5',    // 浅灰白
   }
 };
 
 /**
- * 全局共享材质（性能优化：避免材质切换开销）
+ * 全局共享材质 - 服务器机柜风格（哑光塑料质感）
  */
 const SharedMaterials = {
-  // 外壳材质（透明）- 启用顶点颜色支持实例颜色
-  outerShell: new THREE.MeshBasicMaterial({
+  // 外壳材质（半透明玻璃）
+  outerShell: new THREE.MeshStandardMaterial({
     color: 0xffffff,
     transparent: true,
-    opacity: 0.2,
+    opacity: 0.08,
+    metalness: 0.1,
+    roughness: 0.3,
+    side: THREE.DoubleSide
   }),
-  // 内层材质（Phong光照）- 启用顶点颜色支持实例颜色
-  innerLayer: new THREE.MeshPhongMaterial({
+  // 内层材质（哑光塑料/金属）
+  innerLayer: new THREE.MeshStandardMaterial({
     color: 0xffffff,
+    metalness: 0.2,        // 低金属度（塑料感）
+    roughness: 0.6,        // 高粗糙度（哑光）
+    emissive: 0x000000,    // 无自发光
+    emissiveIntensity: 0
   }),
-  // 边框材质
+  // 边框材质（深灰色细线）
   edges: new THREE.LineBasicMaterial({
-    color: 0xffffff,
+    color: 0x666666,       // 深灰色
+    transparent: true,
+    opacity: 0.4,
     linewidth: 1
   })
 };
@@ -202,6 +211,10 @@ class BarCollectionManager {
 
     // 动画管理器
     this.animationManager = null;
+
+    // 扫描光晕相关
+    this.scanningLights = [];
+    this.scanTime = 0;
   }
 
   /**
@@ -264,6 +277,189 @@ class BarCollectionManager {
 
     // 使用动画方式更新到目标高度
     this._initializeHeights(barsData);
+
+    // 创建专业的扫描光效（使用 Shader）
+    this._createProfessionalScanEffect();
+  }
+
+  /**
+   * 创建专业的扫描光效（使用自定义 Shader）
+   */
+  _createProfessionalScanEffect() {
+    // 扫描线的 Vertex Shader
+    const scanVertexShader = `
+      varying vec3 vPosition;
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      
+      void main() {
+        vPosition = position;
+        vNormal = normalize(normalMatrix * normal);
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vViewPosition = -mvPosition.xyz;
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `;
+
+    // 扫描线的 Fragment Shader
+    const scanFragmentShader = `
+      uniform float scanPosition;      // 扫描线位置 (0-1)
+      uniform vec3 scanColor;          // 扫描线颜色
+      uniform vec3 baseColor;          // 基础颜色
+      uniform float scanWidth;         // 扫描线宽度
+      uniform float glowIntensity;     // 发光强度
+      uniform float opacity;           // 整体透明度
+      uniform float minY;              // 柱子最小Y
+      uniform float maxY;              // 柱子最大Y
+      
+      varying vec3 vPosition;
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      
+      void main() {
+        // 计算当前片元的归一化高度 (0-1)
+        float normalizedHeight = (vPosition.y - minY) / (maxY - minY);
+        
+        // 计算到扫描线的距离
+        float distanceToScan = abs(normalizedHeight - scanPosition);
+        
+        // 扫描线核心（非常亮）
+        float scanCore = smoothstep(scanWidth * 0.5, 0.0, distanceToScan);
+        
+        // 扫描线光晕（渐变）
+        float scanGlow = smoothstep(scanWidth * 3.0, 0.0, distanceToScan);
+        
+        // 边缘发光（Fresnel 效果）
+        vec3 viewDir = normalize(vViewPosition);
+        float fresnel = pow(1.0 - abs(dot(viewDir, vNormal)), 3.0);
+        
+        // 混合颜色
+        vec3 finalColor = baseColor;
+        
+        // 添加扫描线
+        finalColor = mix(finalColor, scanColor, scanCore * 0.8);
+        finalColor += scanColor * scanGlow * glowIntensity * 0.3;
+        
+        // 添加边缘发光
+        finalColor += scanColor * fresnel * 0.4;
+        
+        // 计算最终透明度
+        float finalOpacity = opacity;
+        finalOpacity += scanCore * 0.5;        // 扫描线处更不透明
+        finalOpacity += scanGlow * 0.2;        // 光晕处稍微不透明
+        finalOpacity += fresnel * 0.3;         // 边缘更不透明
+        
+        gl_FragColor = vec4(finalColor, finalOpacity);
+      }
+    `;
+
+    this.bars.forEach((bar) => {
+      // 检查是否有异常
+      const hasAlert = bar.layersData.some(layer => layer.color > 0);
+      if (!hasAlert) return;
+
+      // 获取最高告警级别
+      const maxAlertLevel = Math.max(...bar.layersData.map(layer => layer.color));
+      
+      // 根据告警级别设置颜色
+      const alertColors = {
+        1: new THREE.Color(0xffff00),  // 黄色
+        2: new THREE.Color(0xff9800),  // 橙色
+        3: new THREE.Color(0xff0000)   // 红色
+      };
+      const scanColor = alertColors[maxAlertLevel] || new THREE.Color(0xffff00);
+      const baseColor = scanColor.clone().multiplyScalar(0.3); // 基础色更暗
+
+      // 创建扫描效果的几何体（与柱子外壳相同）
+      const scanGeometry = GeometryCache.getOuterShellGeometry(this.barWidth, this.initHeight);
+      
+      // 创建 Shader Material
+      const scanMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+          scanPosition: { value: 0.0 },
+          scanColor: { value: scanColor },
+          baseColor: { value: baseColor },
+          scanWidth: { value: 0.05 },
+          glowIntensity: { value: 1.0 },
+          opacity: { value: 0.25 },
+          minY: { value: -this.initHeight / 2 },
+          maxY: { value: this.initHeight / 2 }
+        },
+        vertexShader: scanVertexShader,
+        fragmentShader: scanFragmentShader,
+        transparent: true,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+
+      const scanMesh = new THREE.Mesh(scanGeometry, scanMaterial);
+      scanMesh.position.set(
+        bar.position.x,
+        bar.position.y + this.initHeight / 2,
+        bar.position.z
+      );
+      
+      this.scene.add(scanMesh);
+      
+      this.scanningLights.push({
+        mesh: scanMesh,
+        material: scanMaterial,
+        barHeight: bar.currentHeight,
+        barIndex: bar.barIndex,
+        speed: 0.25 + Math.random() * 0.1,  // 提速：0.25-0.35（之前是 0.15-0.20）
+        phase: Math.random() * 10,
+        alertLevel: maxAlertLevel
+      });
+    });
+  }
+
+  /**
+   * 更新扫描光效动画
+   */
+  updateScanningAnimation(deltaTime = 0.016) {
+    this.scanTime += deltaTime;
+    
+    this.scanningLights.forEach((scanData) => {
+      // 获取当前柱子的实际高度
+      const bar = this.bars[scanData.barIndex];
+      if (!bar) return;
+      
+      const currentHeight = bar.currentHeight;
+      const scaleY = currentHeight / this.initHeight;
+      
+      // 更新 mesh 的缩放（跟随柱子高度变化）
+      scanData.mesh.scale.y = scaleY;
+      scanData.mesh.position.y = bar.position.y + currentHeight / 2;
+      
+      // 计算扫描位置（0-1，循环）
+      const cycleTime = 3; // 3秒一个循环（之前是4秒）
+      const progress = ((this.scanTime * scanData.speed + scanData.phase) % cycleTime) / cycleTime;
+      
+      // 使用缓动函数，让运动更自然（先慢后快）
+      const easedProgress = this._easeInCubic(progress);
+      
+      // 更新 shader uniform
+      scanData.material.uniforms.scanPosition.value = easedProgress;
+      
+      // 扫描线接近顶部时增强发光
+      const glowBoost = progress > 0.8 ? (progress - 0.8) * 5 : 0;
+      scanData.material.uniforms.glowIntensity.value = 1.0 + glowBoost;
+    });
+  }
+
+  /**
+   * 缓动函数：先慢后快（加速效果）
+   */
+  _easeInCubic(t) {
+    return t * t * t;
+  }
+
+  /**
+   * 缓动函数：先加速后减速（备用）
+   */
+  _easeInOutQuad(t) {
+    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
   }
 
   _createOuterShellInstancedMesh(count) {
@@ -633,6 +829,14 @@ class BarCollectionManager {
       this.scene.remove(this.mergedEdgesMesh);
       this.mergedEdgesMesh.geometry.dispose();
     }
+
+    // 清理扫描光晕
+    this.scanningLights.forEach(scanData => {
+      this.scene.remove(scanData.mesh);
+      scanData.mesh.geometry.dispose();
+      scanData.material.dispose();
+    });
+    this.scanningLights = [];
 
     this.bars.forEach(bar => bar.dispose());
     this.bars = [];

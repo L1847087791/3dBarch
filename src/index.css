@@ -7,12 +7,11 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Orbitron', 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow: hidden; /* 隐藏滚动条 */
+  overflow: hidden;
+  background: #000;
 }
 
 #root {
@@ -20,29 +19,37 @@ body {
   padding: 0;
   width: 100vw;
   height: 100vh;
+  background: radial-gradient(ellipse at center, #0a0e27 0%, #000000 100%);
 }
 
-/* 堆标签样式 */
+/* 全息投影风格标签 */
 .group-label {
-  color: white ;
-  font-size: 10px ;
-  font-family: 'Arial', sans-serif ;
-  padding: 2px ;
-  background: rgba(0, 0, 0, 0.1) ;
-  border-radius: 4px ;
-  border: 1px solid rgba(255, 255, 255, 0.8) ;
-  backdrop-filter: blur(4px) ;
-  pointer-events: none ;
-  transition: opacity 0.3s ease ;
-  pointer-events: none;  /*不阻挡鼠标事件*/
-  user-select: none; /*不可选中*/
+  color: #00ffff;
+  font-size: 12px;
+  font-family: 'Orbitron', 'Arial', sans-serif;
+  font-weight: 600;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(255, 0, 255, 0.1) 100%);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
+  box-shadow: 
+    0 0 10px rgba(0, 255, 255, 0.3),
+    inset 0 0 10px rgba(0, 255, 255, 0.1);
+  text-shadow: 0 0 5px rgba(0, 255, 255, 0.8);
+  pointer-events: none;
+  user-select: none;
 }
 
-/* 鼠标悬停时的效果 */
+
 .group-label:hover {
-  background: rgba(0, 0, 0, 0.8) ;
-  border-color: white ;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(255, 0, 255, 0.2) 100%);
+  border-color: rgba(0, 255, 255, 0.8);
+  box-shadow: 
+    0 0 20px rgba(0, 255, 255, 0.6),
+    inset 0 0 15px rgba(0, 255, 255, 0.2);
 }
+
 
 /* 摄像机重置按钮样式 */
 .camera-reset-btn {
@@ -112,4 +119,27 @@ body {
   width: 20px;
   height: 20px;
   fill: white;
+}
+
+/* 扫描线效果 */
+@keyframes scanline {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.5), transparent);
+  animation: scanline 4s linear infinite;
+  pointer-events: none;
+  z-index: 9999;
 }

@@ -24,25 +24,30 @@ class ThreeScene {
    * 初始化场景
    */
   init() {
-    // 创建场景
+    // 创建场景 - 数据中心风格
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('lightblue'); // 蓝色背景
+    
+    // 深灰色背景（机房风格）
+    this.scene.background = new THREE.Color(0x2a2e35);
 
-    //创建坐标辅助器，仅用于区分笛卡尔坐标 ：X 轴为红色，Y 轴为绿色，Z 轴为蓝色
-    // const axesHelper = new THREE.AxesHelper(200)
-    // this.scene.add(axesHelper);
+    // 轻微雾效
+    this.scene.fog = new THREE.Fog(0x2a2e35, 800, 2500);
 
-    // //创建网格辅助器，调试场景图位置
-    // const grideHelper = new THREE.GridHelper(5000, 100)   //步长为5000/100=50
-    // this.scene.add(grideHelper)
-
-    //添加地平面
+    // 地面（深灰色，与浅色柱子形成对比）
     const groundMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(5000, 5000),
-      new THREE.MeshPhongMaterial({color:'gray'})
-    )
-      groundMesh.rotation.x = Math.PI * -0.5
-      this.scene.add(groundMesh)
+      new THREE.MeshStandardMaterial({
+        color: 0x1a1d23,
+        metalness: 0.3,
+        roughness: 0.7
+      })
+    );
+    groundMesh.rotation.x = Math.PI * -0.5;
+    groundMesh.receiveShadow = true;
+    this.scene.add(groundMesh);
+
+    // 添加网格线（深灰色）
+    this.addGridLines();
 
     // 创建透视相机
     const width = this.container.clientWidth;
@@ -58,13 +63,19 @@ class ThreeScene {
     this.camera.position.set(138, 423, 0);
     this.camera.lookAt(0, 0, 0);
 
-    // 创建渲染器
+    // 创建渲染器 - 启用高级特性
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true, // 抗锯齿
-      alpha: true
+      antialias: true,
+      alpha: true,
+      powerPreference: 'high-performance'
     });
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;  // 标准曝光（浅色物体不需要高曝光）
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.container.appendChild(this.renderer.domElement);
 
     // 创建 CSS2D 渲染器（用于渲染标签）
@@ -84,25 +95,90 @@ class ThreeScene {
   }
 
   /**
-   * 设置灯光系统
+   * 添加网格线（深灰色，低调）
+   */
+  addGridLines() {
+    const gridSize = 5000;
+    const divisions = 100;
+    const step = gridSize / divisions;
+    
+    const material = new THREE.LineBasicMaterial({
+      color: 0x3a3e45,
+      transparent: true,
+      opacity: 0.2
+    });
+
+    const points = [];
+    for (let i = -gridSize / 2; i <= gridSize / 2; i += step) {
+      // X 方向线
+      points.push(new THREE.Vector3(i, 0.1, -gridSize / 2));
+      points.push(new THREE.Vector3(i, 0.1, gridSize / 2));
+      // Z 方向线
+      points.push(new THREE.Vector3(-gridSize / 2, 0.1, i));
+      points.push(new THREE.Vector3(gridSize / 2, 0.1, i));
+    }
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const grid = new THREE.LineSegments(geometry, material);
+    this.scene.add(grid);
+  }
+
+  /**
+   * 设置灯光系统 - 数据中心风格（明亮、专业）
    */
   setupLights() {
-    // 环境光 - 提供基础亮度
-    const ambientLight = new THREE.AmbientLight(0xffffff, 1);
+    // 环境光（提高亮度，适合浅色物体）
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
     this.scene.add(ambientLight);
     this.lights.push(ambientLight);
 
-    // 方向光 - 主光源
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(50, 100, 50);
-    this.scene.add(directionalLight);
-    this.lights.push(directionalLight);
+    // 主光源 - 白色强光（顶部照明）
+    const mainLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    mainLight.position.set(100, 200, 100);
+    mainLight.castShadow = true;
+    mainLight.shadow.mapSize.width = 2048;
+    mainLight.shadow.mapSize.height = 2048;
+    this.scene.add(mainLight);
+    this.lights.push(mainLight);
 
-    // 补光
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
-    fillLight.position.set(-50, 50, -50);
+    // 补光 - 冷白色（模拟机房照明）
+    const fillLight = new THREE.DirectionalLight(0xe8f4ff, 1.0);
+    fillLight.position.set(-100, 100, -100);
     this.scene.add(fillLight);
     this.lights.push(fillLight);
+
+    // 顶部聚光灯（增强立体感）
+    const spotLight = new THREE.SpotLight(0xffffff, 1.8);
+    spotLight.position.set(0, 300, 0);
+    spotLight.angle = Math.PI / 4;
+    spotLight.penumbra = 0.3;
+    spotLight.decay = 2;
+    spotLight.distance = 1000;
+    this.scene.add(spotLight);
+    this.lights.push(spotLight);
+
+    // 点光源阵列（柔和氛围光）
+    this.createDynamicLights();
+  }
+
+  /**
+   * 创建动态点光源 - 柔和版（适合浅色场景）
+   */
+  createDynamicLights() {
+    const colors = [0xe8f4ff, 0xffffff, 0xf0f8ff, 0xfafafa];
+    const positions = [
+      { x: 200, y: 80, z: 200 },
+      { x: -200, y: 80, z: 200 },
+      { x: 200, y: 80, z: -200 },
+      { x: -200, y: 80, z: -200 }
+    ];
+
+    positions.forEach((pos, i) => {
+      const light = new THREE.PointLight(colors[i], 0.6, 600);
+      light.position.set(pos.x, pos.y, pos.z);
+      this.scene.add(light);
+      this.lights.push(light);
+    });
   }
 
   /**

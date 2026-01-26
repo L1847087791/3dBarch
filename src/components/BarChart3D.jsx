@@ -151,6 +151,11 @@ const BarChart3D = forwardRef(({
         interactionRef.current.updateCursorAnimate();
       }
 
+      // 更新扫描光晕动画
+      if (barManagerRef.current && barManagerRef.current.updateScanningAnimation) {
+        barManagerRef.current.updateScanningAnimation(0.016);
+      }
+
       if (sceneRef.current) {
         sceneRef.current.render();
       }
