@@ -304,10 +304,6 @@ class ViewModeManager {
    * 从组件视图过渡到指标视图
    */
   _transitionToMetricView(duration, ease, onComplete) {
-    // 隐藏边框
-    if (this.barManager.mergedEdgesMesh) {
-      this.barManager.mergedEdgesMesh.visible = false;
-    }
 
     // 更新指标视图矩阵
     this._updateAllMetricLayerMatrices();
@@ -359,10 +355,6 @@ class ViewModeManager {
       onComplete: () => {
         // 隐藏指标视图层
         this.metricLayerInstancedMesh.visible = false;
-        // 显示边框
-        if (this.barManager.mergedEdgesMesh) {
-          this.barManager.mergedEdgesMesh.visible = true;
-        }
         onComplete();
       }
     });

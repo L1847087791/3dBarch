@@ -226,7 +226,7 @@ class CameraAnimator {
       context.fillStyle = 'white';
       context.textBaseline = 'middle';
       context.textAlign = 'left';
-      context.fillText(componentName,30, canvas.height / 2);
+      context.fillText(componentName, 30, canvas.height / 2);
 
       // 创建纹理
       const texture = new THREE.CanvasTexture(canvas);
@@ -245,7 +245,7 @@ class CameraAnimator {
       const material = new THREE.MeshBasicMaterial({
         map: texture,
         transparent: true,
-        opacity:0,
+        opacity: 0,
         side: THREE.DoubleSide,
         depthTest: false,
         depthWrite: false
@@ -269,14 +269,14 @@ class CameraAnimator {
       });
     });
 
-   const materials = this.innerLayerLabels.map(item => item.material);
- // 使用 gsap 动画显示标签（自下而上）,利用官方更为推荐的stagger写法
+    const materials = this.innerLayerLabels.map(item => item.material);
+    // 使用 gsap 动画显示标签（自下而上）,利用官方更为推荐的stagger写法
     gsap.to(materials, {
-       opacity: 1,
-       duration: 0.3,
-       stagger: this.options.labelAnimationDelay,
-       ease: 'power2.out'
-      });
+      opacity: 1,
+      duration: 0.3,
+      stagger: this.options.labelAnimationDelay,
+      ease: 'power2.out'
+    });
 
   }
 

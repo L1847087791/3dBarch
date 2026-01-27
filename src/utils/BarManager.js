@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import BarAnimationManager from './BarAnimationManager';
 
 /**
@@ -39,13 +38,6 @@ const SharedMaterials = {
     roughness: 0.6,        // 高粗糙度（哑光）
     emissive: 0x000000,    // 无自发光
     emissiveIntensity: 0
-  }),
-  // 边框材质（深灰色细线）
-  edges: new THREE.LineBasicMaterial({
-    color: 0x666666,       // 深灰色
-    transparent: true,
-    opacity: 0.4,
-    linewidth: 1
   })
 };
 
@@ -55,7 +47,6 @@ const SharedMaterials = {
 const GeometryCache = {
   outerShellCache: new Map(),
   innerLayerCache: new Map(),
-  edgesCache: new Map(),
 
   getOuterShellGeometry(width, height) {
     const key = `${width}_${height}`;
@@ -73,22 +64,11 @@ const GeometryCache = {
     return this.innerLayerCache.get(key);
   },
 
-  getEdgesGeometry(width, height) {
-    const key = `${width}_${height}`;
-    if (!this.edgesCache.has(key)) {
-      const boxGeom = this.getInnerLayerGeometry(width, height);
-      this.edgesCache.set(key, new THREE.EdgesGeometry(boxGeom));
-    }
-    return this.edgesCache.get(key);
-  },
-
   dispose() {
     this.outerShellCache.forEach(geom => geom.dispose());
     this.outerShellCache.clear();
     this.innerLayerCache.forEach(geom => geom.dispose());
     this.innerLayerCache.clear();
-    this.edgesCache.forEach(geom => geom.dispose());
-    this.edgesCache.clear();
   }
 };
 
@@ -192,7 +172,6 @@ class BarCollectionManager {
     // InstancedMesh 相关
     this.outerShellInstancedMesh = null;
     this.innerLayerInstancedMesh = null;
-    this.mergedEdgesMesh = null;
     this.totalLayerCount = 0;
     this.instanceIdToLayer = new Map();
 
@@ -360,7 +339,7 @@ class BarCollectionManager {
 
       // 获取最高告警级别
       const maxAlertLevel = Math.max(...bar.layersData.map(layer => layer.color));
-      
+
       // 根据告警级别设置颜色
       const alertColors = {
         1: new THREE.Color(0xffff00),  // 黄色
@@ -372,7 +351,7 @@ class BarCollectionManager {
 
       // 创建扫描效果的几何体（与柱子外壳相同）
       const scanGeometry = GeometryCache.getOuterShellGeometry(this.barWidth, this.initHeight);
-      
+
       // 创建 Shader Material
       const scanMaterial = new THREE.ShaderMaterial({
         uniforms: {
@@ -399,9 +378,9 @@ class BarCollectionManager {
         bar.position.y + this.initHeight / 2,
         bar.position.z
       );
-      
+
       this.scene.add(scanMesh);
-      
+
       this.scanningLights.push({
         mesh: scanMesh,
         material: scanMaterial,
@@ -419,29 +398,29 @@ class BarCollectionManager {
    */
   updateScanningAnimation(deltaTime = 0.016) {
     this.scanTime += deltaTime;
-    
+
     this.scanningLights.forEach((scanData) => {
       // 获取当前柱子的实际高度
       const bar = this.bars[scanData.barIndex];
       if (!bar) return;
-      
+
       const currentHeight = bar.currentHeight;
       const scaleY = currentHeight / this.initHeight;
-      
+
       // 更新 mesh 的缩放（跟随柱子高度变化）
       scanData.mesh.scale.y = scaleY;
       scanData.mesh.position.y = bar.position.y + currentHeight / 2;
-      
+
       // 计算扫描位置（0-1，循环）
       const cycleTime = 3; // 3秒一个循环（之前是4秒）
       const progress = ((this.scanTime * scanData.speed + scanData.phase) % cycleTime) / cycleTime;
-      
+
       // 使用缓动函数，让运动更自然（先慢后快）
       const easedProgress = this._easeInCubic(progress);
-      
+
       // 更新 shader uniform
       scanData.material.uniforms.scanPosition.value = easedProgress;
-      
+
       // 扫描线接近顶部时增强发光
       const glowBoost = progress > 0.8 ? (progress - 0.8) * 5 : 0;
       scanData.material.uniforms.glowIntensity.value = 1.0 + glowBoost;
@@ -512,63 +491,6 @@ class BarCollectionManager {
     this.scene.add(this.innerLayerInstancedMesh);
   }
 
-  _createMergedEdges() {
-    const innerWidth = this.barWidth * 0.9;
-    const edgesGeometry = GeometryCache.getEdgesGeometry(innerWidth, this.baseLayerHeight);
-
-    const edgesGeometries = [];
-    this.bars.forEach(bar => {
-      bar.innerLayers.forEach((layerData) => {
-        const clonedGeom = edgesGeometry.clone();
-        const matrix = new THREE.Matrix4();
-        matrix.makeTranslation(bar.position.x, layerData.positionY, bar.position.z);
-        const scaleMatrix = new THREE.Matrix4();
-        scaleMatrix.makeScale(1, layerData.scaleY, 1);
-        matrix.multiply(scaleMatrix);
-        clonedGeom.applyMatrix4(matrix);
-        edgesGeometries.push(clonedGeom);
-      });
-    });
-
-    const mergedGeometry = mergeGeometries(edgesGeometries, false);
-    this.mergedEdgesMesh = new THREE.LineSegments(mergedGeometry, SharedMaterials.edges);
-    this.mergedEdgesMesh.frustumCulled = false;
-    this.scene.add(this.mergedEdgesMesh);
-
-    edgesGeometries.forEach(geom => geom.dispose());
-  }
-
-  _updateMergedEdges() {
-    if (this.mergedEdgesMesh) {
-      this.scene.remove(this.mergedEdgesMesh);
-      this.mergedEdgesMesh.geometry.dispose();
-    }
-
-    const innerWidth = this.barWidth * 0.9;
-    const edgesGeometry = GeometryCache.getEdgesGeometry(innerWidth, this.baseLayerHeight);
-
-    const edgesGeometries = [];
-    this.bars.forEach(bar => {
-      bar.innerLayers.forEach((layerData) => {
-        const clonedGeom = edgesGeometry.clone();
-        const matrix = new THREE.Matrix4();
-        matrix.makeTranslation(bar.position.x, layerData.positionY, bar.position.z);
-        const scaleMatrix = new THREE.Matrix4();
-        scaleMatrix.makeScale(1, layerData.scaleY, 1);
-        matrix.multiply(scaleMatrix);
-        clonedGeom.applyMatrix4(matrix);
-        edgesGeometries.push(clonedGeom);
-      });
-    });
-
-    const mergedGeometry = mergeGeometries(edgesGeometries, false);
-    this.mergedEdgesMesh = new THREE.LineSegments(mergedGeometry, SharedMaterials.edges);
-    this.mergedEdgesMesh.frustumCulled = false;
-    this.scene.add(this.mergedEdgesMesh);
-
-    edgesGeometries.forEach(geom => geom.dispose());
-  }
-
   _updateAllInstanceMatrices() {
     this.bars.forEach(bar => {
       bar.innerLayers.forEach((layerData, i) => {
@@ -579,14 +501,11 @@ class BarCollectionManager {
     this.innerLayerInstancedMesh.instanceMatrix.needsUpdate = true;
     this.innerLayerInstancedMesh.computeBoundingSphere();
   }
- 
+
   _initializeHeights(barsData) {
     this.animationManager.animateHeights(barsData, {
       duration: 0.8,
       ease: 'power2.out',
-      //   onComplete: () => {
-      //   this._createMergedEdges();
-      // }
     });
   }
 
@@ -666,7 +585,6 @@ class BarCollectionManager {
     this.outerShellInstancedMesh.instanceMatrix.needsUpdate = true;
     this.innerLayerInstancedMesh.instanceMatrix.needsUpdate = true;
     this.innerLayerInstancedMesh.computeBoundingSphere();
-    this._updateMergedEdges();
   }
 
   animateAllHeights(heights, options = {}) {
@@ -675,7 +593,6 @@ class BarCollectionManager {
       duration: options.duration || 0.8,
       ease: options.ease || 'power2.out',
       onComplete: () => {
-        this._updateMergedEdges();
         if (options.onComplete) options.onComplete();
       }
     });
@@ -823,11 +740,6 @@ class BarCollectionManager {
     if (this.innerLayerInstancedMesh) {
       this.scene.remove(this.innerLayerInstancedMesh);
       this.innerLayerInstancedMesh.dispose();
-    }
-
-    if (this.mergedEdgesMesh) {
-      this.scene.remove(this.mergedEdgesMesh);
-      this.mergedEdgesMesh.geometry.dispose();
     }
 
     // 清理扫描光晕

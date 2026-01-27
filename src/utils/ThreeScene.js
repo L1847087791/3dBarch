@@ -26,7 +26,7 @@ class ThreeScene {
   init() {
     // 创建场景 - 数据中心风格
     this.scene = new THREE.Scene();
-    
+
     // 深灰色背景（机房风格）
     this.scene.background = new THREE.Color(0x2a2e35);
 
@@ -45,9 +45,6 @@ class ThreeScene {
     groundMesh.rotation.x = Math.PI * -0.5;
     groundMesh.receiveShadow = true;
     this.scene.add(groundMesh);
-
-    // 添加网格线（深灰色）
-    this.addGridLines();
 
     // 创建透视相机
     const width = this.container.clientWidth;
@@ -92,35 +89,6 @@ class ThreeScene {
 
     // 监听窗口大小变化
     window.addEventListener('resize', this.onWindowResize);
-  }
-
-  /**
-   * 添加网格线（深灰色，低调）
-   */
-  addGridLines() {
-    const gridSize = 5000;
-    const divisions = 100;
-    const step = gridSize / divisions;
-    
-    const material = new THREE.LineBasicMaterial({
-      color: 0x3a3e45,
-      transparent: true,
-      opacity: 0.2
-    });
-
-    const points = [];
-    for (let i = -gridSize / 2; i <= gridSize / 2; i += step) {
-      // X 方向线
-      points.push(new THREE.Vector3(i, 0.1, -gridSize / 2));
-      points.push(new THREE.Vector3(i, 0.1, gridSize / 2));
-      // Z 方向线
-      points.push(new THREE.Vector3(-gridSize / 2, 0.1, i));
-      points.push(new THREE.Vector3(gridSize / 2, 0.1, i));
-    }
-
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const grid = new THREE.LineSegments(geometry, material);
-    this.scene.add(grid);
   }
 
   /**

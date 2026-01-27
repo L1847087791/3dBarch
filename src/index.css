@@ -11,7 +11,6 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
-  background: #000;
 }
 
 #root {
@@ -19,7 +18,6 @@ body {
   padding: 0;
   width: 100vw;
   height: 100vh;
-  background: radial-gradient(ellipse at center, #0a0e27 0%, #000000 100%);
 }
 
 /* 全息投影风格标签 */
@@ -27,8 +25,8 @@ body {
   color: #00ffff;
   font-size: 12px;
   font-family: 'Orbitron', 'Arial', sans-serif;
-  font-weight: 600;
-  padding: 6px 12px;
+  font-weight: 400;
+  padding: 6px;
   background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(255, 0, 255, 0.1) 100%);
   border-radius: 8px;
   border: 1px solid rgba(0, 255, 255, 0.5);
@@ -119,27 +117,4 @@ body {
   width: 20px;
   height: 20px;
   fill: white;
-}
-
-/* 扫描线效果 */
-@keyframes scanline {
-  0% {
-    transform: translateY(-100%);
-  }
-  100% {
-    transform: translateY(100vh);
-  }
-}
-
-body::after {
-  content: '';
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.5), transparent);
-  animation: scanline 4s linear infinite;
-  pointer-events: none;
-  z-index: 9999;
 }

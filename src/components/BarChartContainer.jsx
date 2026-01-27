@@ -29,7 +29,7 @@ function generateMockComponentViewData(hostCount = 160, regionCount = 3) {
 
     for (let j = 0; j < actualHostCount; j++) {
       const hostId = `host-${i}-${j}`;
-      const componentCount = Math.random()<0.5?Math.floor(Math.random() * 6)+5:Math.floor(Math.random() * 10)+1; // 1-10个组件
+      const componentCount = Math.random() < 0.5 ? Math.floor(Math.random() * 6) + 5 : Math.floor(Math.random() * 10) + 1; // 1-10个组件
       const components = [];
 
       for (let k = 0; k < componentCount; k++) {
@@ -38,7 +38,7 @@ function generateMockComponentViewData(hostCount = 160, regionCount = 3) {
           id: `comp-${hostId}-${k}`,
           mc: `${componentType}-${k + 1}`,
           zylx: componentType,
-          gjdj: Math.random()<0.8?0:Math.random()<0.8?Math.floor(Math.random() * 3):Math.floor(Math.random() * 4) // 0-3告警等级
+          gjdj: Math.random() < 0.8 ? 0 : Math.random() < 0.8 ? Math.floor(Math.random() * 3) : Math.floor(Math.random() * 4) // 0-3告警等级
         });
       }
 
@@ -155,7 +155,7 @@ const BarChartContainer = () => {
   // 获取5000主机测试数据
   const getBarSceneData5000 = () => {
     // 生成mock后端数据
-    const mockBackendData = generateMockComponentViewData(5000,20);
+    const mockBackendData = generateMockComponentViewData(5000, 20);
     // 转换为前端格式
     const { sceneData, groupIndicatorInfo } = transformComponentViewData(mockBackendData);
     setBarSceneData(sceneData);
@@ -238,7 +238,7 @@ const BarChartContainer = () => {
     if (!metricPollingRef.current.active || metricPollingRef.current.barCount !== barCount) {
       startMetricPolling(barCount);
     }
-    return ()=>{
+    return () => {
       stopMetricPolling()
     }
   }, [viewMode, barSceneData, startMetricPolling, stopMetricPolling]);
