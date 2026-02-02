@@ -69,9 +69,19 @@ class InteractionManager {
     this.cursorFloatOffset = 0;       // 浮动偏移量（用于计算当前位置）
     this.cursorBaseY = 0;             // 光标基准Y坐标
 
+    // 拖拽检测相关
+    this.isMouseDown = false;         // 鼠标是否按下
+    this.mouseDownPosition = null;    // 鼠标按下时的位置 {x, y}
+    this.mouseDownTime = 0;           // 鼠标按下的时间戳
+    this.isDragging = false;          // 是否正在拖拽
+    this.dragThreshold = 5;           // 拖拽阈值（像素）
+    this.clickTimeThreshold = 200;    // 点击时间阈值（毫秒）
+
     // 绑定事件处理函数（保持 this 引用）
+    this._onMouseDown = this._onMouseDown.bind(this);
     this._onMouseClick = this._onMouseClick.bind(this);
     this._onMouseMove = this._onMouseMove.bind(this);
+    this._onMouseLeave = this._onMouseLeave.bind(this);
 
     // 初始化事件监听
     this._initEventListeners();
@@ -99,8 +109,10 @@ class InteractionManager {
    * 初始化事件监听器
    */
   _initEventListeners() {
+    this.domElement.addEventListener('mousedown', this._onMouseDown);
     this.domElement.addEventListener('click', this._onMouseClick);
     this.domElement.addEventListener('mousemove', this._onMouseMove);
+    this.domElement.addEventListener('mouseleave', this._onMouseLeave);
   }
 
   /**
@@ -129,10 +141,43 @@ class InteractionManager {
   }
 
   /**
+   * 鼠标按下事件处理
+   * @param {MouseEvent} event - 鼠标事件
+   */
+  _onMouseDown(event) {
+    this.isMouseDown = true;
+    this.isDragging = false;
+    this.mouseDownTime = Date.now();
+
+    // 记录鼠标按下时的屏幕坐标（用于计算移动距离）
+    this.mouseDownPosition = {
+      x: event.clientX,
+      y: event.clientY
+    };
+  }
+
+  /**
    * 鼠标移动事件处理（悬停检测）
    * @param {MouseEvent} event - 鼠标事件
    */
   _onMouseMove(event) {
+    // 如果鼠标按下，检测是否开始拖拽
+    if (this.isMouseDown && this.mouseDownPosition) {
+      const deltaX = event.clientX - this.mouseDownPosition.x;
+      const deltaY = event.clientY - this.mouseDownPosition.y;
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+      // 如果移动距离超过阈值，标记为拖拽状态
+      if (distance > this.dragThreshold) {
+        this.isDragging = true;
+      }
+    }
+
+    // 如果正在拖拽，跳过所有悬停检测
+    if (this.isDragging) {
+      return;
+    }
+
     this._updateMousePosition(event);
 
     // 更新射线
@@ -156,6 +201,62 @@ class InteractionManager {
 
     // 否则检测外层悬停
     this._handleOuterShellHover();
+  }
+
+  /**
+   * 鼠标离开画布事件处理
+   * @param {MouseEvent} event - 鼠标事件
+   */
+  _onMouseLeave(event) {
+    // 重置拖拽状态
+    this.isMouseDown = false;
+    this.isDragging = false;
+    this.mouseDownPosition = null;
+
+    // 重置鼠标样式
+    this.domElement.style.cursor = 'default';
+
+    // 根据视图模式处理不同的离开逻辑
+    const viewMode = this._getViewMode();
+
+    if (viewMode === ViewMode.METRIC) {
+      // 指标视图：清除外层悬停状态
+      if (this.hoveredBarIndex !== null) {
+        this._resetHoverState();
+        this.hoveredBarIndex = null;
+
+        // 触发指标视图离开回调
+        if (this.callbacks.onMetricLeave) {
+          this.callbacks.onMetricLeave();
+        }
+      }
+      return;
+    }
+
+    // 组件视图：清除悬停状态
+    // 如果有选中的柱状图，清除内层悬停状态
+    if (this.selectedBarIndex !== null) {
+      if (this.hoveredLayerIndex !== null) {
+        this._stopLayerBlink();
+        this.hoveredLayerIndex = null;
+
+        // 触发内层离开回调
+        if (this.callbacks.onLayerLeave) {
+          this.callbacks.onLayerLeave();
+        }
+      }
+    } else {
+      // 没有选中柱状图，清除外层悬停状态
+      if (this.hoveredBarIndex !== null) {
+        this._resetHoverState();
+        this.hoveredBarIndex = null;
+
+        // 触发外层离开回调
+        if (this.callbacks.onBarLeave) {
+          this.callbacks.onBarLeave();
+        }
+      }
+    }
   }
 
   /**
@@ -244,15 +345,6 @@ class InteractionManager {
       // 检查是否可拾取（未被选中）
       const bar = this.barCollectionManager.getBars()[barIndex];
       if (!bar || bar.outerShell.userData.raycastEnabled === false) {
-        // 如果当前悬停的柱状图不可拾取，尝试检测下一个
-        // if (intersects.length > 1) {
-        //   const nextBarIndex = intersects[1].instanceId;
-        //   const nextBar = this.barCollectionManager.getBars()[nextBarIndex];
-        //   if (nextBar && nextBar.outerShell.userData.raycastEnabled !== false) {
-        //     this._processOuterShellHover(nextBarIndex);
-        //     return;
-        //   }
-        // }
         // 没有可拾取的柱状图
         if (this.hoveredBarIndex !== null && this.hoveredBarIndex !== this.selectedBarIndex) {
           this._resetHoverState();
@@ -687,6 +779,27 @@ class InteractionManager {
    * @param {MouseEvent} event - 鼠标事件
    */
   _onMouseClick(event) {
+    // 计算鼠标移动距离和按下时长
+    let distance = 0;
+    let duration = 0;
+
+    if (this.mouseDownPosition) {
+      const deltaX = event.clientX - this.mouseDownPosition.x;
+      const deltaY = event.clientY - this.mouseDownPosition.y;
+      distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      duration = Date.now() - this.mouseDownTime;
+    }
+
+    // 重置拖拽状态
+    this.isMouseDown = false;
+    this.isDragging = false;
+    this.mouseDownPosition = null;
+
+    // 只有移动距离小于阈值且时间小于阈值才视为有效点击
+    if (distance > this.dragThreshold || duration > this.clickTimeThreshold) {
+      return;
+    }
+
     this._updateMousePosition(event);
 
     // 更新射线
@@ -729,6 +842,10 @@ class InteractionManager {
       const bar = this.barCollectionManager.getBars()[barIndex];
 
       if (bar) {
+        //先执行外层离开回调，清除浮层
+        if (this.callbacks.onBarLeave) {
+          this.callbacks.onBarLeave();
+        }
         // 触发外层点击回调
         if (this.callbacks.onBarClick) {
           this.callbacks.onBarClick({
@@ -935,8 +1052,10 @@ class InteractionManager {
     this.domElement.style.cursor = 'default';
 
     // 移除事件监听
+    this.domElement.removeEventListener('mousedown', this._onMouseDown);
     this.domElement.removeEventListener('click', this._onMouseClick);
     this.domElement.removeEventListener('mousemove', this._onMouseMove);
+    this.domElement.removeEventListener('mouseleave', this._onMouseLeave);
 
     this.selectedBarIndex = null;
     this.hoveredBarIndex = null;
