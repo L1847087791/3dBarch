@@ -6,11 +6,22 @@ import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
  * 负责为每个区域创建：
  * 1. 底部边框平面（透明内部 + 白色边框）
  * 2. CSS2D 文字标签
+ * 3. 处理区域标签的交互事件（点击）
  */
 class GroupIndicatorManager {
-  constructor(scene) {
+  /**
+   * @param {THREE.Scene} scene - Three.js 场景
+   * @param {Object} callbacks - 回调函数集合
+   * @param {Function} callbacks.onRegionClick - 区域点击回调
+   */
+  constructor(scene, callbacks = {}) {
     this.scene = scene;
     this.indicators = []; // 存储所有指示器对象
+
+    // 回调函数
+    this.callbacks = {
+      onRegionClick: callbacks.onRegionClick || null
+    };
   }
 
   /**
@@ -36,10 +47,15 @@ class GroupIndicatorManager {
       centerZ - depth / 2 - 30
     );
 
+    // 3. 为标签添加交互事件
+    const regionData = { ...groupInfo }; // 保存完整区域信息
+    this._attachLabelEvents(textLabel, regionData);
+
     // 保存指示器对象
     this.indicators.push({
       borderFrame,
-      textLabel
+      textLabel,
+      regionData
     });
   }
 
@@ -90,6 +106,49 @@ class GroupIndicatorManager {
   }
 
   /**
+   * 为标签DOM元素添加交互事件
+   * @param {CSS2DObject} label - CSS2D标签对象
+   * @param {Object} regionData - 区域数据
+   */
+  _attachLabelEvents(label, regionData) {
+    if (!label || !label.element) return;
+
+    const element = label.element;
+
+    // 点击事件
+    const onClick = (event) => {
+      event.stopPropagation(); // 阻止事件冒泡
+      if (this.callbacks.onRegionClick) {
+        this.callbacks.onRegionClick(regionData);
+      }
+    };
+
+    // 添加事件监听器
+    element.addEventListener('click', onClick);
+
+    // 保存事件处理函数引用，用于后续移除
+    label.userData = {
+      ...label.userData,
+      eventHandlers: {
+        onClick
+      }
+    };
+  }
+
+  /**
+   * 移除标签的事件监听器
+   * @param {CSS2DObject} label - CSS2D标签对象
+   */
+  _detachLabelEvents(label) {
+    if (!label || !label.element || !label.userData.eventHandlers) return;
+    const element = label.element;
+    const handlers = label.userData.eventHandlers;
+    element.removeEventListener('click', handlers.onClick);
+
+    delete label.userData.eventHandlers;
+  }
+
+  /**
    * 批量创建多个区域指示器
    * @param {Array} groupsInfo - 区域信息数组
    */
@@ -118,7 +177,31 @@ class GroupIndicatorManager {
     this.indicators.forEach(({ textLabel }) => {
       if (textLabel && textLabel.element) {
         textLabel.element.style.opacity = '1';
-        textLabel.element.style.pointerEvents = '';
+        textLabel.element.style.pointerEvents = 'auto';
+      }
+    });
+  }
+
+  /**
+   * 禁用所有标签的交互（拖拽时使用）
+   */
+  disableInteraction() {
+    this.indicators.forEach(({ textLabel }) => {
+      if (textLabel && textLabel.element) {
+        textLabel.element.style.pointerEvents = 'none';
+      }
+    });
+  }
+
+  /**
+   * 启用所有标签的交互（拖拽结束后恢复）
+   */
+  enableInteraction() {
+    this.indicators.forEach(({ textLabel }) => {
+      if (textLabel && textLabel.element) {
+        // 只有当标签可见时才启用交互
+        const isVisible = textLabel.element.style.opacity !== '0';
+        textLabel.element.style.pointerEvents = isVisible ? 'auto' : 'none';
       }
     });
   }
@@ -128,6 +211,9 @@ class GroupIndicatorManager {
    */
   dispose() {
     this.indicators.forEach(({ borderFrame, textLabel }) => {
+      // 移除标签事件监听器
+      this._detachLabelEvents(textLabel);
+
       // 销毁边框平面
       if (borderFrame.plane) {
         borderFrame.plane.geometry.dispose();

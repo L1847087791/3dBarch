@@ -3,10 +3,16 @@
  * 负责处理鼠标和滚轮交互，控制相机的缩放和旋转
  */
 class CameraControls {
-  constructor(camera, domElement, target = { x: 0, y: 0, z: 0 }) {
+  constructor(camera, domElement, target = { x: 0, y: 0, z: 0 }, callbacks = {}) {
     this.camera = camera;
     this.domElement = domElement;
     this.target = target; // 相机注视的目标点
+
+    // 回调函数
+    this.callbacks = {
+      onDragStart: callbacks.onDragStart || null,  // 拖拽开始
+      onDragEnd: callbacks.onDragEnd || null       // 拖拽结束
+    };
 
     // 鼠标状态
     this.isMouseDown = false;
@@ -55,6 +61,11 @@ class CameraControls {
     this.isMouseDown = true;
     this.lastMouseX = event.clientX;
     this.lastMouseY = event.clientY;
+
+    // 触发拖拽开始回调（禁用标签交互）
+    if (this.callbacks.onDragStart) {
+      this.callbacks.onDragStart();
+    }
   }
 
   /**
@@ -87,6 +98,11 @@ class CameraControls {
    */
   onMouseUp() {
     this.isMouseDown = false;
+
+    // 触发拖拽结束回调（恢复标签交互）
+    if (this.callbacks.onDragEnd) {
+      this.callbacks.onDragEnd();
+    }
   }
 
   /**

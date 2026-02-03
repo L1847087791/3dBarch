@@ -202,17 +202,50 @@ const BarChart3D = forwardRef(({
     viewModeManagerRef.current = new ViewModeManager(scene, barManagerRef.current);
     viewModeManagerRef.current.initialize();
 
-    // 创建区域指示器
+    // 创建区域指示器（传入回调函数）
     if (groupIndicatorInfo && groupIndicatorInfo.length > 0) {
-      groupIndicatorRef.current = new GroupIndicatorManager(scene);
+      groupIndicatorRef.current = new GroupIndicatorManager(scene, {
+        // 区域点击回调
+        onRegionClick: (regionData) => {
+
+          // 1. 清除主机选中状态
+          if (interactionRef.current) {
+            interactionRef.current.clearSelection();
+          }
+
+          // 2. 取消主机虚化效果
+          if (barManagerRef.current) {
+            barManagerRef.current.unfocus();
+          }
+
+          // 3. 聚焦到区域（摄像机移动到区域正上方）
+          if (cameraAnimatorRef.current) {
+            cameraAnimatorRef.current.focusOnRegion(regionData);
+          }
+        }
+      });
       groupIndicatorRef.current.createAllIndicators(groupIndicatorInfo);
     }
 
-    // 设置相机控制
+    // 设置相机控制（传入拖拽回调）
     controlsRef.current = new CameraControls(
       camera,
       renderer.domElement,
-      { x: 0, y: 0, z: 0 }
+      { x: 0, y: 0, z: 0 },
+      {
+        // 拖拽开始：禁用标签交互，避免卡顿
+        onDragStart: () => {
+          if (groupIndicatorRef.current) {
+            groupIndicatorRef.current.disableInteraction();
+          }
+        },
+        // 拖拽结束：恢复标签交互
+        onDragEnd: () => {
+          if (groupIndicatorRef.current) {
+            groupIndicatorRef.current.enableInteraction();
+          }
+        }
+      }
     );
 
     // 创建摄像机动画控制器

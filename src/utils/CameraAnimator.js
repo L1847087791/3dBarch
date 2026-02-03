@@ -390,6 +390,107 @@ class CameraAnimator {
   }
 
   /**
+   * 聚焦到指定区域
+   * 摄像机移动到区域中心正上方，俯视整个区域
+   * @param {Object} regionInfo - 区域信息
+   * @param {number} regionInfo.centerX - 区域中心X坐标
+   * @param {number} regionInfo.centerZ - 区域中心Z坐标
+   * @param {number} regionInfo.width - 区域宽度
+   * @param {number} regionInfo.depth - 区域深度
+   * @param {string} regionInfo.label - 区域标签
+   * @param {Function} onHideRegionLabels - 隐藏区域标签的回调（可选）
+   */
+  focusOnRegion(regionInfo, onHideRegionLabels = null) {
+    if (this.isAnimating || !regionInfo) return;
+
+    this.isAnimating = true;
+
+    // 清除之前的聚焦状态（如果有）
+    this._removeInnerLayerLabels();
+    this.focusedBarIndex = null;
+    this.focusedBar = null;
+
+    // 可选：隐藏区域标签
+    if (onHideRegionLabels) {
+      onHideRegionLabels();
+    }
+
+    // 触发聚焦开始回调
+    if (this.callbacks.onFocusStart) {
+      this.callbacks.onFocusStart(null); // 区域聚焦没有barIndex
+    }
+
+    // 计算摄像机目标位置
+    const { centerX, centerZ, width, depth } = regionInfo;
+
+    // 根据区域大小计算合适的摄像机高度和距离
+    const regionSize = Math.max(width, depth);
+    const cameraHeight = regionSize * 0.6 + 15; // 高度适中
+    const cameraOffsetZ = regionSize * 0.4 + 10; // 前方偏移，形成斜视角
+
+    // 摄像机位置：区域斜上方（而非正上方）
+    const targetPosition = {
+      x: centerX,
+      y: cameraHeight,
+      z: centerZ + cameraOffsetZ  // 在前方，形成斜视角
+    };
+
+    // 视角目标：区域中心略高于地面（而非地面）
+    const lookAtTarget = {
+      x: centerX,
+      y: 5,  // 略高于地面，避免视角太陡
+      z: centerZ
+    };
+
+    // 获取当前相机的lookAt目标点
+    const currentTarget = this.cameraControls
+      ? { ...this.cameraControls.target }
+      : { x: 0, y: 0, z: 0 };
+
+    // 创建用于插值的目标点对象
+    const animatedTarget = { ...currentTarget };
+
+    // 使用 gsap 动画同时移动摄像机位置和视角目标点
+    const timeline = gsap.timeline({
+      onComplete: () => {
+        this.isAnimating = false;
+        // 更新相机控制器的目标点
+        if (this.cameraControls) {
+          this.cameraControls.setTarget(lookAtTarget.x, lookAtTarget.y, lookAtTarget.z);
+          // 更新球坐标参数
+          this._updateCameraControlsParams();
+        }
+        // 触发聚焦完成回调
+        if (this.callbacks.onFocusComplete) {
+          this.callbacks.onFocusComplete(null); // 区域聚焦没有barIndex
+        }
+      }
+    });
+
+    // 同时动画相机位置
+    timeline.to(this.camera.position, {
+      x: targetPosition.x,
+      y: targetPosition.y,
+      z: targetPosition.z,
+      duration: this.options.animationDuration,
+      ease: 'power2.inOut',
+    }, 0);
+
+    // 同时动画视角目标点
+    timeline.to(animatedTarget, {
+      x: lookAtTarget.x,
+      y: lookAtTarget.y,
+      z: lookAtTarget.z,
+      duration: this.options.animationDuration,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        // 动画过程中持续更新 lookAt
+        this.camera.lookAt(animatedTarget.x, animatedTarget.y, animatedTarget.z);
+      }
+    }, 0);
+  }
+
+  /**
    * 销毁
    */
   dispose() {
