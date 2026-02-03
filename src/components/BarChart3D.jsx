@@ -329,17 +329,28 @@ const BarChart3D = forwardRef(({
     setCameraFocused(false);
   }, []);
 
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Escape' && cameraFocused) {
+      handleCancelPreview();
+    }
+  }, [cameraFocused, handleCancelPreview]);
+
+
+
   return (
     <div
       ref={containerRef}
+      tabIndex={0}
       style={{
         width: '100%',
         height: '100%',
         overflow: 'hidden',
         margin: 0,
         padding: 0,
-        position: 'relative'
+        position: 'relative',
+        outline: 'none'
       }}
+      onKeyDown={handleKeyDown}
     >
       {/* 摄像机重置按钮 */}
       {cameraFocused && (

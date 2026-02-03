@@ -32,7 +32,7 @@ class CameraControls {
 
     // 灵敏度
     this.rotateSpeed = 0.005;
-    this.zoomSpeed = 5;
+    this.zoomSpeed = 20;
 
     this.addEventListeners();
   }
