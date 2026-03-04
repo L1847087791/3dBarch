@@ -7,12 +7,10 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Orbitron', 'Rajdhani', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow: hidden; /* 隐藏滚动条 */
+  overflow: hidden;
 }
 
 #root {
@@ -22,29 +20,103 @@ body {
   height: 100vh;
 }
 
-/* 堆标签样式 */
+/* 全息投影风格标签 */
 .group-label {
-  color: white ;
-  font-size: 14px ;
-  font-family: 'Arial', sans-serif ;
-  font-weight: bold ;
-  padding: 3px 4px ;
-  background: rgba(0, 0, 0, 0.6) ;
-  border-radius: 6px ;
-  border: 1px solid rgba(255, 255, 255, 0.8) ;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) ;
-  backdrop-filter: blur(4px) ;
-  pointer-events: none ;
-  user-select: none ;
-  white-space: nowrap ;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8) ;
-  transition: opacity 0.3s ease ;
-  pointer-events: none;  /*不阻挡鼠标事件*/
-  user-select: none; /*不可选中*/
+  color: #00ffff;
+  font-size: 12px;
+  font-family: 'Orbitron', 'Arial', sans-serif;
+  font-weight: 400;
+  padding: 6px;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.1) 0%, rgba(255, 0, 255, 0.1) 100%);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 0 10px rgba(0, 255, 255, 0.3),
+    inset 0 0 10px rgba(0, 255, 255, 0.1);
+  text-shadow: 0 0 5px rgba(0, 255, 255, 0.8);
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
 }
 
-/* 鼠标悬停时的效果 */
+
 .group-label:hover {
-  background: rgba(0, 0, 0, 0.8) ;
-  border-color: white ;
+  background: linear-gradient(135deg, rgba(0, 212, 255, 0.2) 0%, rgba(255, 0, 255, 0.2) 100%);
+  border-color: rgba(0, 255, 255, 0.8);
+  box-shadow:
+    0 0 20px rgba(0, 255, 255, 0.6),
+    inset 0 0 15px rgba(0, 255, 255, 0.2);
+}
+
+
+/* 摄像机重置按钮样式 */
+.camera-reset-btn {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+  z-index: 100;
+}
+
+.camera-reset-btn:hover {
+  background: white;
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.camera-reset-btn:active {
+  transform: scale(0.95);
+}
+
+.camera-reset-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: #333;
+}
+
+/* 取消预览按钮样式 */
+.camera-cancel-btn {
+  position: absolute;
+  bottom: 20px;
+  right: 70px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 100, 100, 0.9);
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+  z-index: 100;
+}
+
+.camera-cancel-btn:hover {
+  background: rgba(255, 80, 80, 1);
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.camera-cancel-btn:active {
+  transform: scale(0.95);
+}
+
+.camera-cancel-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: white;
 }

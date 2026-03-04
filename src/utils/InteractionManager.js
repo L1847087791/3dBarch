@@ -1,20 +1,42 @@
 import * as THREE from 'three';
+import { ViewMode } from './ViewModeManager';
 
 /**
  * 交互管理器类
  * 负责处理3D场景中柱状图的交互事件（点击、悬停等）
  * 使用射线追踪法(Raycaster)实现物体拾取
+ * 支持组件视图和指标视图两种模式的不同交互逻辑
  */
 class InteractionManager {
   /**
    * @param {THREE.Camera} camera - Three.js 相机
    * @param {HTMLElement} domElement - 渲染器的 DOM 元素
    * @param {BarCollectionManager} barCollectionManager - 柱状图集合管理器
+   * @param {ViewModeManager} viewModeManager - 视图模式管理器（可选）
+   * @param {Object} callbacks - 回调函数集合
    */
-  constructor(camera, domElement, barCollectionManager) {
+  constructor(camera, domElement, barCollectionManager, viewModeManager = null, callbacks = {}) {
     this.camera = camera;
     this.domElement = domElement;
     this.barCollectionManager = barCollectionManager;
+    this.viewModeManager = viewModeManager;
+
+    // 摄像机动画控制器（由外部注入）
+    this.cameraAnimator = null;
+
+    // 回调函数
+    this.callbacks = {
+      onBarHover: callbacks.onBarHover || null,
+      onBarLeave: callbacks.onBarLeave || null,
+      onBarClick: callbacks.onBarClick || null,
+      onLayerHover: callbacks.onLayerHover || null,
+      onLayerLeave: callbacks.onLayerLeave || null,
+      onLayerClick: callbacks.onLayerClick || null,
+      onMetricHover: callbacks.onMetricHover || null,
+      onMetricLeave: callbacks.onMetricLeave || null,
+      onHideRegionLabels: callbacks.onHideRegionLabels || null,
+      onShowRegionLabels: callbacks.onShowRegionLabels || null,
+    };
 
     // 射线追踪器
     this.raycaster = new THREE.Raycaster();
@@ -47,20 +69,65 @@ class InteractionManager {
     this.cursorFloatOffset = 0;       // 浮动偏移量（用于计算当前位置）
     this.cursorBaseY = 0;             // 光标基准Y坐标
 
+    // 拖拽检测相关
+    this.isMouseDown = false;         // 鼠标是否按下
+    this.mouseDownPosition = null;    // 鼠标按下时的位置 {x, y}
+    this.mouseDownTime = 0;           // 鼠标按下的时间戳
+    this.isDragging = false;          // 是否正在拖拽
+    this.dragThreshold = 5;           // 拖拽阈值（像素）
+    this.clickTimeThreshold = 200;    // 点击时间阈值（毫秒）
+
     // 绑定事件处理函数（保持 this 引用）
+    this._onMouseDown = this._onMouseDown.bind(this);
     this._onMouseClick = this._onMouseClick.bind(this);
     this._onMouseMove = this._onMouseMove.bind(this);
+    this._onMouseLeave = this._onMouseLeave.bind(this);
 
     // 初始化事件监听
     this._initEventListeners();
   }
 
   /**
+   * 设置摄像机动画控制器
+   * @param {CameraAnimator} cameraAnimator - 摄像机动画控制器实例
+   */
+  setCameraAnimator(cameraAnimator) {
+    this.cameraAnimator = cameraAnimator;
+  }
+
+  /**
+   * 获取当前视图模式
+   */
+  _getViewMode() {
+    if (this.viewModeManager) {
+      return this.viewModeManager.getViewMode();
+    }
+    return ViewMode.COMPONENT;
+  }
+
+  /**
    * 初始化事件监听器
    */
   _initEventListeners() {
+    this.domElement.addEventListener('mousedown', this._onMouseDown);
     this.domElement.addEventListener('click', this._onMouseClick);
     this.domElement.addEventListener('mousemove', this._onMouseMove);
+    this.domElement.addEventListener('mouseleave', this._onMouseLeave);
+  }
+
+  /**
+   * 获取3D坐标对应的屏幕坐标
+   * @param {Object} position3D - 3D坐标 {x, y, z}
+   * @returns {Object} 屏幕坐标 {x, y}
+   */
+  getScreenPosition(position3D) {
+    const vector = new THREE.Vector3(position3D.x, position3D.y, position3D.z);
+    vector.project(this.camera);
+    const rect = this.domElement.getBoundingClientRect();
+    return {
+      x: (vector.x * 0.5 + 0.5) * rect.width,
+      y: (-vector.y * 0.5 + 0.5) * rect.height
+    };
   }
 
   /**
@@ -74,23 +141,189 @@ class InteractionManager {
   }
 
   /**
+   * 鼠标按下事件处理
+   * @param {MouseEvent} event - 鼠标事件
+   */
+  _onMouseDown(event) {
+    this.isMouseDown = true;
+    this.isDragging = false;
+    this.mouseDownTime = Date.now();
+
+    // 记录鼠标按下时的屏幕坐标（用于计算移动距离）
+    this.mouseDownPosition = {
+      x: event.clientX,
+      y: event.clientY
+    };
+  }
+
+  /**
    * 鼠标移动事件处理（悬停检测）
    * @param {MouseEvent} event - 鼠标事件
    */
   _onMouseMove(event) {
+    // 如果鼠标按下，检测是否开始拖拽
+    if (this.isMouseDown && this.mouseDownPosition) {
+      const deltaX = event.clientX - this.mouseDownPosition.x;
+      const deltaY = event.clientY - this.mouseDownPosition.y;
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+      // 如果移动距离超过阈值，标记为拖拽状态
+      if (distance > this.dragThreshold) {
+        this.isDragging = true;
+      }
+    }
+
+    // 如果正在拖拽，跳过所有悬停检测
+    if (this.isDragging) {
+      return;
+    }
+
     this._updateMousePosition(event);
 
     // 更新射线
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
-    // 如果有选中的柱状图，优先检测内层悬停
+    // 根据视图模式处理不同的交互逻辑
+    const viewMode = this._getViewMode();
+
+    if (viewMode === ViewMode.METRIC) {
+      // 指标视图：只支持外层悬停，显示指标信息
+      this._handleMetricViewHover();
+      return;
+    }
+
+    // 组件视图：原有逻辑
+    // 如果有选中的柱状图，只检测内层悬停，跳过外层悬停
     if (this.selectedBarIndex !== null) {
       this._handleInnerLayerHover();
-      // return;
+      return;
     }
 
     // 否则检测外层悬停
     this._handleOuterShellHover();
+  }
+
+  /**
+   * 鼠标离开画布事件处理
+   * @param {MouseEvent} event - 鼠标事件
+   */
+  _onMouseLeave(event) {
+    // 重置拖拽状态
+    this.isMouseDown = false;
+    this.isDragging = false;
+    this.mouseDownPosition = null;
+
+    // 重置鼠标样式
+    this.domElement.style.cursor = 'default';
+
+    // 根据视图模式处理不同的离开逻辑
+    const viewMode = this._getViewMode();
+
+    if (viewMode === ViewMode.METRIC) {
+      // 指标视图：清除外层悬停状态
+      if (this.hoveredBarIndex !== null) {
+        this._resetHoverState();
+        this.hoveredBarIndex = null;
+
+        // 触发指标视图离开回调
+        if (this.callbacks.onMetricLeave) {
+          this.callbacks.onMetricLeave();
+        }
+      }
+      return;
+    }
+
+    // 组件视图：清除悬停状态
+    // 如果有选中的柱状图，清除内层悬停状态
+    if (this.selectedBarIndex !== null) {
+      if (this.hoveredLayerIndex !== null) {
+        this._stopLayerBlink();
+        this.hoveredLayerIndex = null;
+
+        // 触发内层离开回调
+        if (this.callbacks.onLayerLeave) {
+          this.callbacks.onLayerLeave();
+        }
+      }
+    } else {
+      // 没有选中柱状图，清除外层悬停状态
+      if (this.hoveredBarIndex !== null) {
+        this._resetHoverState();
+        this.hoveredBarIndex = null;
+
+        // 触发外层离开回调
+        if (this.callbacks.onBarLeave) {
+          this.callbacks.onBarLeave();
+        }
+      }
+    }
+  }
+
+  /**
+   * 处理指标视图下的悬停检测
+   * 只支持外层悬停，显示所有内层的高度百分比
+   */
+  _handleMetricViewHover() {
+    // 获取外壳 InstancedMesh
+    const outerShellInstancedMesh = this.barCollectionManager.getOuterShellInstancedMesh();
+    if (!outerShellInstancedMesh) return;
+
+    // 进行射线检测
+    const intersects = this.raycaster.intersectObject(outerShellInstancedMesh);
+
+    if (intersects.length > 0) {
+      const intersected = intersects[0];
+      const barIndex = intersected.instanceId;
+      const bar = this.barCollectionManager.getBars()[barIndex];
+
+      if (!bar) return;
+
+      // 如果悬停到新的柱状图
+      if (this.hoveredBarIndex !== barIndex) {
+        // 恢复之前悬停的柱状图
+        this._resetHoverState();
+
+        // 设置新的悬停状态
+        this.hoveredBarIndex = barIndex;
+        this._applyHoverState(barIndex);
+
+        // 改变鼠标样式
+        this.domElement.style.cursor = 'pointer';
+
+        // 获取指标数据（从 ViewModeManager 获取）
+        const metrics = this.viewModeManager ? this.viewModeManager.getMetricData(barIndex) : [];
+        const screenPosition = this.getScreenPosition({
+          x: bar.position.x,
+          y: bar.currentHeight,
+          z: bar.position.z
+        });
+
+        // 触发指标视图悬停回调
+        if (this.callbacks.onMetricHover) {
+          this.callbacks.onMetricHover({
+            type: 'metric',
+            barIndex,
+            uuid: bar.uuid,
+            groupName: bar.groupName,
+            metrics: metrics, // 直接传递完整的metrics数据（包含metricData和color）
+            screenPosition,
+            bar: bar // 传递完整的bar对象
+          });
+        }
+      }
+    } else {
+      // 鼠标移出所有柱状图
+      if (this.hoveredBarIndex !== null) {
+        this._resetHoverState();
+        this.hoveredBarIndex = null;
+        this.domElement.style.cursor = 'default';
+
+        // 触发指标视图离开回调
+        if (this.callbacks.onMetricLeave) {
+          this.callbacks.onMetricLeave();
+        }
+      }
+    }
   }
 
   /**
@@ -112,15 +345,6 @@ class InteractionManager {
       // 检查是否可拾取（未被选中）
       const bar = this.barCollectionManager.getBars()[barIndex];
       if (!bar || bar.outerShell.userData.raycastEnabled === false) {
-        // 如果当前悬停的柱状图不可拾取，尝试检测下一个
-        // if (intersects.length > 1) {
-        //   const nextBarIndex = intersects[1].instanceId;
-        //   const nextBar = this.barCollectionManager.getBars()[nextBarIndex];
-        //   if (nextBar && nextBar.outerShell.userData.raycastEnabled !== false) {
-        //     this._processOuterShellHover(nextBarIndex);
-        //     return;
-        //   }
-        // }
         // 没有可拾取的柱状图
         if (this.hoveredBarIndex !== null && this.hoveredBarIndex !== this.selectedBarIndex) {
           this._resetHoverState();
@@ -137,6 +361,11 @@ class InteractionManager {
         this._resetHoverState();
         this.hoveredBarIndex = null;
         this.domElement.style.cursor = 'default';
+
+        // 触发外层离开回调
+        if (this.callbacks.onBarLeave) {
+          this.callbacks.onBarLeave();
+        }
       }
     }
   }
@@ -156,6 +385,24 @@ class InteractionManager {
 
       // 改变鼠标样式
       this.domElement.style.cursor = 'pointer';
+
+      // 触发外层悬停回调
+      if (this.callbacks.onBarHover) {
+        const bar = this.barCollectionManager.getBars()[barIndex];
+        const screenPosition = this.getScreenPosition({
+          x: bar.position.x,
+          y: bar.currentHeight,
+          z: bar.position.z
+        });
+        this.callbacks.onBarHover({
+          type: 'outer',
+          barIndex,
+          uuid: bar.uuid,
+          groupName: bar.groupName,
+          screenPosition,
+          bar: bar // 传递完整的bar对象
+        });
+      }
     }
   }
 
@@ -199,6 +446,26 @@ class InteractionManager {
         this._startLayerBlink();
 
         this.domElement.style.cursor = 'pointer';
+
+        // 触发内层悬停回调
+        if (this.callbacks.onLayerHover) {
+          const screenPosition = this.getScreenPosition({
+            x: bar.position.x,
+            y: bar.currentHeight,
+            z: bar.position.z
+          });
+          const layerData = bar.innerLayers[layerIndex];
+          this.callbacks.onLayerHover({
+            type: 'inner',
+            barIndex: this.selectedBarIndex,
+            layerIndex,
+            barUuid: bar.uuid,
+            layerUuid: layerData?.uuid,
+            groupName: bar.groupName,
+            screenPosition,
+            bar: bar // 传递完整的bar对象
+          });
+        }
       }
     } else {
       // 鼠标移出所有内层
@@ -206,6 +473,11 @@ class InteractionManager {
         this._stopLayerBlink();
         this.hoveredLayerIndex = null;
         this.domElement.style.cursor = 'default';
+
+        // 触发内层离开回调
+        if (this.callbacks.onLayerLeave) {
+          this.callbacks.onLayerLeave();
+        }
       }
     }
   }
@@ -507,12 +779,42 @@ class InteractionManager {
    * @param {MouseEvent} event - 鼠标事件
    */
   _onMouseClick(event) {
+    // 计算鼠标移动距离和按下时长
+    let distance = 0;
+    let duration = 0;
+
+    if (this.mouseDownPosition) {
+      const deltaX = event.clientX - this.mouseDownPosition.x;
+      const deltaY = event.clientY - this.mouseDownPosition.y;
+      distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      duration = Date.now() - this.mouseDownTime;
+    }
+
+    // 重置拖拽状态
+    this.isMouseDown = false;
+    this.isDragging = false;
+    this.mouseDownPosition = null;
+
+    // 只有移动距离小于阈值且时间小于阈值才视为有效点击
+    if (distance > this.dragThreshold || duration > this.clickTimeThreshold) {
+      return;
+    }
+
     this._updateMousePosition(event);
 
     // 更新射线
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
-    // 如果已有选中的柱状图，检测内层点击或其他柱状图点击
+    // 根据视图模式处理不同的点击逻辑
+    const viewMode = this._getViewMode();
+
+    if (viewMode === ViewMode.METRIC) {
+      // 指标视图：不支持点击选中，直接返回
+      return;
+    }
+
+    // 组件视图：原有逻辑
+    // 如果已有选中的柱状图，检测内层点击或其他点击
     if (this.selectedBarIndex !== null) {
       this._handleClickWithSelection();
       return;
@@ -540,12 +842,19 @@ class InteractionManager {
       const bar = this.barCollectionManager.getBars()[barIndex];
 
       if (bar) {
-        console.log('点击了柱状图:', {
-          barIndex: barIndex,
-          groupName: bar.groupName,
-          uuid: bar.uuid,
-          bar: bar
-        });
+        //先执行外层离开回调，清除浮层
+        if (this.callbacks.onBarLeave) {
+          this.callbacks.onBarLeave();
+        }
+        // 触发外层点击回调
+        if (this.callbacks.onBarClick) {
+          this.callbacks.onBarClick({
+            type: 'bar',
+            barIndex,
+            uuid: bar.uuid,
+            groupName: bar.groupName
+          });
+        }
 
         // 选中该柱状图
         this._onBarSelected(barIndex);
@@ -573,49 +882,24 @@ class InteractionManager {
         // 只处理当前选中柱状图的内层
         if (layerInfo && layerInfo.barIndex === this.selectedBarIndex) {
           const layerData = bar.innerLayers[layerInfo.layerIndex];
-          console.log('点击了内层:', {
-            barIndex: this.selectedBarIndex,
-            layerIndex: layerInfo.layerIndex,
-            barUuid: bar.uuid,
-            layerUuid: layerData?.uuid,
-            groupName: bar.groupName,
-            instanceId: instanceId
-          });
+
+          // 触发内层点击回调
+          if (this.callbacks.onLayerClick) {
+            this.callbacks.onLayerClick({
+              type: 'layer',
+              barIndex: this.selectedBarIndex,
+              layerIndex: layerInfo.layerIndex,
+              barUuid: bar.uuid,
+              layerUuid: layerData?.uuid,
+              groupName: bar.groupName
+            });
+          }
           return;
         }
       }
     }
-
-    // 检测是否点击了其他柱状图的外层（使用 InstancedMesh）
-    const outerShellInstancedMesh = this.barCollectionManager.getOuterShellInstancedMesh();
-    if (outerShellInstancedMesh) {
-      const outerIntersects = this.raycaster.intersectObject(outerShellInstancedMesh);
-
-      if (outerIntersects.length > 0) {
-        const intersected = outerIntersects[0];
-        const barIndex = intersected.instanceId;
-
-        // 跳过当前选中的柱状图
-        if (barIndex !== this.selectedBarIndex) {
-          const clickedBar = this.barCollectionManager.getBars()[barIndex];
-          if (clickedBar) {
-            console.log('点击了柱状图:', {
-              barIndex: barIndex,
-              groupName: clickedBar.groupName,
-              uuid: clickedBar.uuid,
-              bar: clickedBar
-            });
-
-            // 切换到新的柱状图
-            this._onBarSelected(barIndex);
-            return;
-          }
-        }
-      }
-    }
-
-    // 点击了空白区域，取消选中
-    this._clearBarSelection();
+    // // 点击了空白区域或其他主机，取消选中
+    // this._clearBarSelection();
   }
 
   /**
@@ -643,6 +927,11 @@ class InteractionManager {
     // 如果点击的是已选中的柱状图，不做处理
     if (this.selectedBarIndex === barIndex) return;
 
+    // 如果摄像机动画控制器存在且有聚焦状态，先清除之前的聚焦
+    if (this.cameraAnimator && this.cameraAnimator.hasFocus()) {
+      this.cameraAnimator.clearFocus();
+    }
+
     // 恢复之前选中柱状图的外层可拾取状态
     if (this.selectedBarIndex !== null) {
       this._restoreOuterShellRaycast(this.selectedBarIndex);
@@ -665,7 +954,23 @@ class InteractionManager {
     // 创建选中光标
     this._createSelectionCursor(barIndex);
 
-    console.log(`柱状图 ${barIndex} 已选中，外层射线检测已禁用，可以与内层交互`);
+    // 触发虚化聚焦效果
+    this.barCollectionManager.focusOnBar(barIndex);
+
+    // 触发摄像机聚焦动画
+    const bar = this.barCollectionManager.getBars()[barIndex];
+    if (this.cameraAnimator && bar) {
+      this.cameraAnimator.focusOnBar(
+        bar,
+        barIndex,
+        () => {
+          // 隐藏区域标签
+          if (this.callbacks.onHideRegionLabels) {
+            this.callbacks.onHideRegionLabels();
+          }
+        }
+      );
+    }
   }
 
   /**
@@ -684,7 +989,8 @@ class InteractionManager {
     // 移除选中光标
     this._removeSelectionCursor();
 
-    console.log(`柱状图 ${this.selectedBarIndex} 已取消选中，外层射线检测已恢复`);
+    // 取消虚化聚焦
+    this.barCollectionManager.unfocus();
 
     this.selectedBarIndex = null;
   }
@@ -746,8 +1052,10 @@ class InteractionManager {
     this.domElement.style.cursor = 'default';
 
     // 移除事件监听
+    this.domElement.removeEventListener('mousedown', this._onMouseDown);
     this.domElement.removeEventListener('click', this._onMouseClick);
     this.domElement.removeEventListener('mousemove', this._onMouseMove);
+    this.domElement.removeEventListener('mouseleave', this._onMouseLeave);
 
     this.selectedBarIndex = null;
     this.hoveredBarIndex = null;
